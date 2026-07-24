@@ -1,0 +1,27 @@
+{
+  "name": "ksp-crime-ai-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "leaflet": "^1.9.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-leaflet": "^4.2.1",
+    "react-scripts": "5.0.1"
+  },
+  "scripts": {
+    "start": "cross-env REACT_APP_API_URL=http://localhost:3001 react-scripts start",
+    "build": "REACT_APP_API_URL=https://YOUR_CATALYST_DOMAIN.com react-scripts build"
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%"
+    ],
+    "development": [
+      "last 1 chrome version"
+    ]
+  },
+  "devDependencies": {
+    "cross-env": "^10.1.0"
+  }
+}
