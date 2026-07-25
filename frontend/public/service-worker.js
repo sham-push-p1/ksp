@@ -49,12 +49,13 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
 
   // Always go to network for API calls and external auth requests
-  if (
-    url.pathname.startsWith("/api/") ||
-    url.hostname === "localhost" && url.port === "3001" ||
-    event.request.method !== "GET"
-  ) {
+  if (url.pathname.startsWith("/api/") || (url.hostname === "localhost" && url.port === "3001")) {
     return; // Let it fall through to the network normally
+  }
+
+  // Only cache GET requests
+  if (event.request.method !== "GET") {
+    return;
   }
 
   event.respondWith(

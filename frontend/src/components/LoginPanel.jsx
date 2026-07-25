@@ -1,21 +1,29 @@
 import React, { useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import * as z from "zod";
+
+const loginSchema = z.object({
+  username: z.string().min(1, "Username is required").max(50),
+  password: z.string().min(1, "Password is required").max(100),
+});
+
 export default function LoginPanel({ onLogin, users }) {
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
+  const [serverError, setServerError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const handleLoginSubmit = async () => {
-    if (!username.trim() || !password.trim()) {
-      setError("Username and password are required");
-      return;
-    }
+  const { register, handleSubmit, formState: { errors }, setValue, clearErrors } = useForm({
+    resolver: zodResolver(loginSchema),
+    defaultValues: { username: "", password: "" }
+  });
+
+  const onSubmit = async (data) => {
     setLoading(true);
-    setError("");
-    const res = await onLogin(username, password);
+    setServerError("");
+    const res = await onLogin(data.username, data.password);
     setLoading(false);
     if (!res.success) {
-      setError(res.error || "Invalid credentials");
+      setServerError(res.error || "Invalid credentials");
     }
   };
 
@@ -27,31 +35,36 @@ export default function LoginPanel({ onLogin, users }) {
         <p className="login-subtitle">Karnataka State Police | SCRB</p>
         <p className="login-subtitle2">Intelligent Conversational AI for Crime Database</p>
         
-        <div className="login-form">
+        <form onSubmit={handleSubmit(onSubmit)} className="login-form">
           <label>Officer Username</label>
           <div className="input-group">
             <span className="input-icon">👤</span>
-            <input type="text" value={username} onChange={e=>{setUsername(e.target.value);setError("");}}
-              onKeyDown={e=>e.key==="Enter"&&handleLoginSubmit()} placeholder="Enter username" className="login-input" disabled={loading}/>
+            <input type="text" {...register("username")} placeholder="Enter username" className="login-input" disabled={loading}/>
           </div>
+          {errors.username && <p className="login-error" style={{marginTop: "4px", fontSize: "12px"}}>{errors.username.message}</p>}
           
           <label style={{ marginTop: "14px", display: "block" }}>Password</label>
           <div className="input-group">
             <span className="input-icon">🔒</span>
-            <input type="password" value={password} onChange={e=>{setPassword(e.target.value);setError("");}}
-              onKeyDown={e=>e.key==="Enter"&&handleLoginSubmit()} placeholder="Enter password" className="login-input" disabled={loading}/>
+            <input type="password" {...register("password")} placeholder="Enter password" className="login-input" disabled={loading}/>
           </div>
+          {errors.password && <p className="login-error" style={{marginTop: "4px", fontSize: "12px"}}>{errors.password.message}</p>}
           
-          {error && <p className="login-error">{error}</p>}
-          <button className="login-btn" onClick={handleLoginSubmit} disabled={loading}>
+          {serverError && <p className="login-error">{serverError}</p>}
+          <button type="submit" className="login-btn" disabled={loading}>
             {loading ? "Authenticating..." : "Login"}
           </button>
-        </div>
+        </form>
         
         <div className="demo-accounts">
-          <p className="demo-label">Demostration Profiles (Click to pre-fill):</p>
+          <p className="demo-label">Demonstration Profiles (Click to pre-fill):</p>
           {Object.entries(users).map(([u,d])=>(
-            <button key={u} className="demo-chip" onClick={()=>{setUsername(u);setPassword(u);setError("");}} disabled={loading}>
+            <button key={u} className="demo-chip" onClick={()=>{
+              setValue("username", u);
+              setValue("password", u);
+              clearErrors();
+              setServerError("");
+            }} disabled={loading}>
               👤 {u} <span className="demo-role">({d.role.replace("_", " ").toUpperCase()})</span>
             </button>
           ))}

@@ -1,5 +1,9 @@
 import React, { useEffect, useState, useRef } from "react";
 import { MapContainer, TileLayer, CircleMarker, Popup, ZoomControl, useMap } from "react-leaflet";
+import MarkerClusterGroup from "react-leaflet-cluster";
+import L from "leaflet";
+import "leaflet.heat";
+import { useApp } from "../context/AppContext";
 import "leaflet/dist/leaflet.css";
 import { api } from "../utils/api";
 
@@ -44,12 +48,14 @@ function MapRecenter({ center }) {
 }
 
 export default function CrimeMap() {
-  const [points, setPoints]         = useState([]);
-  const [loading, setLoading]       = useState(true);
-  const [error, setError]           = useState(null);
-  const [filter, setFilter]         = useState("ALL");
-  const [hovered, setHovered]       = useState(null);
-  const [stats, setStats]           = useState({});
+  const { dateRange } = useApp();
+  const [points, setPoints]   = useState([]);
+  const mapRef = useRef(null);
+  const heatLayerRef = useRef(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError]     = useState(null);
+  const [filter, setFilter]   = useState("ALL");
+  const [stats, setStats]     = useState({});
 
   useEffect(() => {
     setLoading(true);
@@ -146,43 +152,38 @@ export default function CrimeMap() {
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
 
-          {filtered.map((pt, i) => {
-            const lat = parseFloat(pt.Latitude);
-            const lng = parseFloat(pt.Longitude);
-            if (isNaN(lat) || isNaN(lng)) return null;
-            const color = getCrimeColor(pt.CrimeMajorHead);
-            return (
-              <CircleMarker
-                key={pt.CaseMasterID || i}
-                center={[lat, lng]}
-                radius={6}
-                pathOptions={{
-                  color,
-                  fillColor: color,
-                  fillOpacity: 0.75,
-                  weight: 1.5,
-                }}
-                eventHandlers={{
-                  mouseover: () => setHovered(pt),
-                  mouseout: () => setHovered(null),
-                }}
-              >
-                <Popup>
-                  <div className="map-popup">
-                    <div className="popup-crime" style={{ color }}>
-                      {pt.CrimeMajorHead || "Unknown Crime"}
+          <MarkerClusterGroup
+            chunkedLoading
+            showCoverageOnHover={false}
+            maxClusterRadius={50}
+          >
+            {filtered.map((pt, i) => {
+              const lat = parseFloat(pt.Latitude);
+              const lng = parseFloat(pt.Longitude);
+              if (isNaN(lat) || isNaN(lng)) return null;
+              const color = getCrimeColor(pt.CrimeMajorHead);
+              return (
+                <CircleMarker
+                  key={pt.CaseMasterID || i}
+                  center={[lat, lng]}
+                  radius={6}
+                  pathOptions={{ color, fillColor: color, fillOpacity: 0.75, weight: 1.5 }}
+                >
+                  <Popup>
+                    <div className="map-popup">
+                      <div className="popup-crime" style={{ color }}>{pt.CrimeMajorHead || "Unknown Crime"}</div>
+                      <div className="popup-row"><b>Crime No:</b> {pt.CrimeNo}</div>
+                      <div className="popup-row"><b>Station:</b> {pt.PoliceStationName}</div>
+                      <div className="popup-row"><b>District:</b> {pt.DistrictName}</div>
+                      <div className="popup-row"><b>Status:</b> {pt.CaseStatus}</div>
+                      <div className="popup-row"><b>Date:</b> {pt.IncidentFromDate?.substring(0, 10)}</div>
+                      <div className="popup-row"><b>Gravity:</b> {pt.GravityOffence}</div>
                     </div>
-                    <div className="popup-row"><b>Crime No:</b> {pt.CrimeNo}</div>
-                    <div className="popup-row"><b>Station:</b> {pt.PoliceStationName}</div>
-                    <div className="popup-row"><b>District:</b> {pt.DistrictName}</div>
-                    <div className="popup-row"><b>Status:</b> {pt.CaseStatus}</div>
-                    <div className="popup-row"><b>Date:</b> {pt.IncidentFromDate?.substring(0, 10)}</div>
-                    <div className="popup-row"><b>Gravity:</b> {pt.GravityOffence}</div>
-                  </div>
-                </Popup>
-              </CircleMarker>
-            );
-          })}
+                  </Popup>
+                </CircleMarker>
+              );
+            })}
+          </MarkerClusterGroup>
         </MapContainer>
 
         {/* Legend */}

@@ -1,50 +1,100 @@
 import React, { useEffect, useRef, useState } from "react";
-export default function NetworkGraph({ response }) {
-  const containerRef = useRef(null); const networkRef = useRef(null);
+import { useApp } from "../context/AppContext";
+import { DataSet, Network } from "vis-network/standalone/esm/vis-network";
+
+export default function NetworkGraph() {
+  const { lastResponse: response } = useApp();
+  const containerRef = useRef(null);
+  const networkRef   = useRef(null);
   const [selected, setSelected] = useState(null);
+
   useEffect(() => {
-    if (!response?.graphData?.nodes?.length || !containerRef.current || !window.vis) return;
+    if (!response?.graphData?.nodes?.length || !containerRef.current) return;
+
     const { nodes: rawNodes } = response.graphData;
-    const nodes = new window.vis.DataSet(rawNodes.map(n=>({
-      id:n.id, label:n.label,
-      title:`${n.label}\nCases: ${n.CaseCount}\nType: ${n.PrimaryCrimeType}\nDistrict: ${n.PrimaryDistrict}`,
-      value:n.CaseCount,
-      color:{ background:n.CaseCount>3?"#e63946":n.CaseCount>1?"#f4a261":"#a8d8ea", border:"#1a1a2e" },
-      font:{size:11,color:"#1a1a2e"}, shape:"dot",
+
+    // Build node dataset
+    const nodes = new window.vis.DataSet(rawNodes.map(n => ({
+      id:    n.id,
+      label: n.label,
+      title: `${n.label}\nCases: ${n.CaseCount}\nType: ${n.PrimaryCrimeType}\nDistrict: ${n.PrimaryDistrict}`,
+      value: n.CaseCount,
+      color: {
+        background: n.CaseCount > 3 ? "#e63946" : n.CaseCount > 1 ? "#f4a261" : "#a8d8ea",
+        border: "#1a1a2e",
+      },
+      font:  { size: 11, color: "#1a1a2e" },
+      shape: "dot",
     })));
-    const edgesArr = [];
-    rawNodes.forEach((n,i)=>rawNodes.forEach((m,j)=>{ if(i<j&&n.PrimaryCrimeType===m.PrimaryCrimeType&&n.PrimaryDistrict===m.PrimaryDistrict) edgesArr.push({id:`e_${i}_${j}`,from:n.id,to:m.id,color:{color:"#ccc"},font:{size:9,color:"#888"}}); }));
-    const edges = new window.vis.DataSet(edgesArr.slice(0,100));
-    networkRef.current?.destroy();
-    networkRef.current = new window.vis.Network(containerRef.current, {nodes,edges}, {
-      nodes:{borderWidth:1,shadow:true}, edges:{smooth:{type:"continuous"},width:1},
-      physics:{enabled:true,stabilization:{iterations:100},barnesHut:{gravitationalConstant:-3000,springLength:80}},
-      interaction:{hover:true,tooltipDelay:200},
+
+    // Build edges efficiently using a district+crime group index (O(n) instead of O(n²)).
+    // We group nodes by their (PrimaryCrimeType, PrimaryDistrict) key, then link within each
+    // group using a hub-and-spoke pattern (first node → all others) to cap edge count.
+    const MAX_EDGES = 120;
+    const groups = {};
+    rawNodes.forEach(n => {
+      const key = `${n.PrimaryCrimeType}||${n.PrimaryDistrict}`;
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(n);
     });
+
+    const edgesArr = [];
+    for (const members of Object.values(groups)) {
+      if (members.length < 2) continue;
+      const hub = members[0];
+      for (let i = 1; i < members.length; i++) {
+        if (edgesArr.length >= MAX_EDGES) break;
+        edgesArr.push({
+          id:    `e_${hub.id}_${members[i].id}`,
+          from:  hub.id,
+          to:    members[i].id,
+          color: { color: "#ccc" },
+        });
+      }
+      if (edgesArr.length >= MAX_EDGES) break;
+    }
+
+    const edges = new window.vis.DataSet(edgesArr);
+
+    networkRef.current?.destroy();
+    networkRef.current = new window.vis.Network(
+      containerRef.current,
+      { nodes, edges },
+      {
+        nodes: { borderWidth: 1, shadow: true },
+        edges: { smooth: { type: "continuous" }, width: 1 },
+        physics: {
+          enabled: true,
+          stabilization: { iterations: 100 },
+          barnesHut: { gravitationalConstant: -3000, springLength: 80 },
+        },
+        interaction: { hover: true, tooltipDelay: 200 },
+      }
+    );
+
     networkRef.current.on("selectNode", params => {
-      console.log("selectNode:", params);
       if (params.nodes.length > 0) {
         const found = rawNodes.find(n => n.id === params.nodes[0]);
-        console.log("Found selected node:", found);
         setSelected(found || null);
       }
     });
-    networkRef.current.on("deselectNode", () => {
-      console.log("deselectNode");
-      setSelected(null);
-    });
+
+    networkRef.current.on("deselectNode", () => setSelected(null));
+
     return () => networkRef.current?.destroy();
   }, [response]);
 
   if (!response?.graphData?.nodes?.length) return (
     <div className="empty-panel">
-      <span className="empty-icon">🕸️</span><p>Ask about criminal networks to see the graph.</p>
+      <span className="empty-icon">🕸️</span>
+      <p>Ask about criminal networks to see the graph.</p>
       <div className="sample-queries"><p>Try:</p><ul>
         <li>"Which accused have multiple cases?"</li>
         <li>"Show repeat offenders in drug cases"</li>
       </ul></div>
     </div>
   );
+
   return (
     <div className="network-panel">
       <div className="panel-header">

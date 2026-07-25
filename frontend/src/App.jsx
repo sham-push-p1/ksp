@@ -1,20 +1,20 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback, Suspense, lazy } from "react";
 import { api } from "./utils/api";
 import ChatMessage from "./components/ChatMessage";
-import ResultsPanel from "./components/ResultsPanel";
-import NetworkGraph from "./components/NetworkGraph";
-import ChartPanel from "./components/ChartPanel";
 import LoginPanel from "./components/LoginPanel";
-import FactorAnalysis from "./components/FactorAnalysis";
-import CrimeMap from "./components/CrimeMap";
+import ErrorBoundary from "./components/ErrorBoundary";
+import { useToast } from "./components/Toast";
+import { useApp } from "./context/AppContext";
 import "./App.css";
 
-const DEMO_USERS = {
-  "admin":     { userId:"EMP001", role:"scrb_analyst", name:"SCRB Analyst",         districtName:null,              stationName:null },
-  "sp_blr":   { userId:"EMP002", role:"sp",           name:"SP Bengaluru Urban",    districtName:"Bengaluru Urban", stationName:null },
-  "insp_wf":  { userId:"EMP003", role:"inspector",    name:"Inspector Whitefield",  districtName:"Bengaluru Urban", stationName:"Whitefield" },
-  "constable":{ userId:"EMP004", role:"constable",    name:"Constable Sharma",      districtName:"Bengaluru Urban", stationName:"Cubbon Park" },
-};
+const ResultsPanel = lazy(() => import("./components/ResultsPanel"));
+const NetworkGraph = lazy(() => import("./components/NetworkGraph"));
+const ChartPanel = lazy(() => import("./components/ChartPanel"));
+const FactorAnalysis = lazy(() => import("./components/FactorAnalysis"));
+const CrimeMap = lazy(() => import("./components/CrimeMap"));
+const Dashboard = lazy(() => import("./components/Dashboard"));
+const SimilarCaseMatcher = lazy(() => import("./components/SimilarCaseMatcher"));
+const AdminPanel = lazy(() => import("./components/AdminPanel"));
 
 const SUGGESTIONS = [
   "How many murder cases were registered in 2024?",
@@ -26,23 +26,23 @@ const SUGGESTIONS = [
 ];
 
 export default function App() {
-  const [user, setUser] = useState(null);
+  const toast = useToast();
+  const { 
+    user, setUser, 
+    activeTab, setActiveTab, 
+    theme, setTheme, 
+    dateRange, setDateRange, 
+    lastResponse, setLastResponse 
+  } = useApp();
+
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [lang, setLang] = useState("en");
-  const [activeTab, setActiveTab] = useState("chat");
-  const [lastResponse, setLastResponse] = useState(null);
   const [isListening, setIsListening] = useState(false);
-  const [theme, setTheme] = useState(() => localStorage.getItem("ksp_theme") || "light");
+  
   const chatEndRef = useRef(null);
   const recRef = useRef(null);
-
-  // Sync data-theme attribute on <html> and persist preference
-  useEffect(() => {
-    document.documentElement.setAttribute("data-theme", theme);
-    localStorage.setItem("ksp_theme", theme);
-  }, [theme]);
 
   const toggleTheme = () => setTheme(t => t === "light" ? "dark" : "light");
 
@@ -61,52 +61,40 @@ export default function App() {
   }, [lang]);
 
   useEffect(() => {
-    const checkSession = async () => {
-      const token = localStorage.getItem("ksp_token");
-      if (!token) return;
-      try {
-        const res = await api.getMe();
-        setUser(res.user);
-        setMessages([{ role: "system", content: `Welcome back, ${res.user.name}. Scoped to: ${res.user.districtName ? res.user.districtName : "Karnataka-wide"}.`, timestamp: new Date().toLocaleTimeString() }]);
-      } catch (err) {
-        console.warn("Session restore failed, clearing credentials:", err);
-        localStorage.removeItem("ksp_token");
-        localStorage.removeItem("ksp_user");
-        setUser(null);
-      }
-    };
-    checkSession();
-  }, []);
+    // Only set welcome message once user is loaded
+    if (user && messages.length === 0) {
+      setMessages([{ 
+        role: "system", 
+        content: `Welcome back, ${user.name}. Scoped to: ${user.districtName ? user.districtName : "Karnataka-wide"}.`, 
+        timestamp: new Date().toLocaleTimeString() 
+      }]);
+    }
+  }, [user, messages.length]);
 
   const handleLogin = async (username, password) => {
     try {
       const res = await api.login(username, password);
-      localStorage.setItem("ksp_token", res.token);
-      localStorage.setItem("ksp_user", JSON.stringify(res.user));
+      // Token lives in the HttpOnly cookie — we only store display-only user info
       setUser(res.user);
       setMessages([{ role: "system", content: `Welcome, ${res.user.name}. ${res.user.role.toUpperCase()} access. ${res.user.districtName ? `Scoped to: ${res.user.districtName}.` : "Karnataka-wide access."}`, timestamp: new Date().toLocaleTimeString() }]);
+      toast.success("Authenticated", `Welcome, ${res.user.name}. Logged in as ${res.user.role.toUpperCase()}.`);
       return { success: true };
     } catch (err) {
-      console.error("[LOGIN FAILED]", err);
       return { success: false, error: err.message };
     }
   };
 
   const handleLogout = async () => {
-    try {
-      await api.logout();
-    } catch (err) {
-      console.warn("Logout request failed:", err);
-    }
-    localStorage.removeItem("ksp_token");
-    localStorage.removeItem("ksp_user");
+    try { await api.logout(); } catch (err) { console.warn("Logout request failed:", err); }
+    // Cookie is cleared server-side; just reset local state
     setUser(null);
     setMessages([]);
     setLastResponse(null);
     setActiveTab("chat");
+    toast.info("Logged Out", "Your session has been terminated securely.");
   };
 
-  const sendMessage = async questionText => {
+  const sendMessage = useCallback(async (questionText) => {
     const q = (questionText || input).trim();
     if (!q || loading) return;
     setInput("");
@@ -115,7 +103,7 @@ export default function App() {
     try {
       const history = messages.filter(m=>m.role==="user"||m.role==="assistant").slice(-6)
         .map(m=>({ question:m.content, answer:m.answer||"" }));
-      const res = await api.chat(q, history, lang);
+      const res = await api.chat(q, history, lang, dateRange);
       setLastResponse(res);
       setMessages(prev => [...prev, { role:"assistant", content:res.answer||res.error||"No response", answer:res.answer, zcqlQuery:res.zcqlQuery, sources:res.sources, intent:res.intent, resultCount:res.resultCount, latencyMs:res.latencyMs, timestamp:new Date().toLocaleTimeString() }]);
       if (res.intent==="trend_analysis"||res.chartData) setActiveTab("chart");
@@ -123,17 +111,44 @@ export default function App() {
       else if (res.results?.length) setActiveTab("results");
     } catch(err) {
       setMessages(prev => [...prev, { role:"error", content:`Error: ${err.message}`, timestamp:new Date().toLocaleTimeString() }]);
+      toast.error("Query Failed", err.message);
     } finally { setLoading(false); }
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [input, loading, lang, messages]);
 
   const handleExportPDF = async () => {
-    const conversation = messages.filter(m=>m.role==="user"||m.role==="assistant")
-      .reduce((acc,m,i,arr) => { if(m.role==="user"&&arr[i+1]?.role==="assistant") acc.push({question:m.content,answer:arr[i+1].content,zcqlQuery:arr[i+1].zcqlQuery,timestamp:m.timestamp}); return acc; },[]);
-    const res = await api.exportPDF(conversation);
-    if (res.html) { const w=window.open("","_blank"); w.document.write(res.html); w.document.close(); w.print(); }
+    const conversation = messages.filter(m => m.role==="user" || m.role==="assistant")
+      .reduce((acc, m, i, arr) => {
+        if (m.role==="user" && arr[i+1]?.role==="assistant")
+          acc.push({ question:m.content, answer:arr[i+1].content, zcqlQuery:arr[i+1].zcqlQuery, timestamp:m.timestamp });
+        return acc;
+      }, []);
+    if (conversation.length === 0) {
+      toast.warning("Nothing to Export", "Have a conversation first before exporting.");
+      return;
+    }
+    try {
+      const res = await api.exportPDF(conversation);
+      if (res.html) {
+        // Download as a self-contained HTML file — avoids popup blockers and
+        // lets the officer open it in any browser and use Ctrl+P to print/save as PDF.
+        const blob = new Blob([res.html], { type: "text/html" });
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement("a");
+        a.href     = url;
+        a.download = `KSP_Report_${new Date().toISOString().slice(0,10)}.html`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        toast.success("Report Downloaded", `${conversation.length} query/queries saved. Open the .html file and press Ctrl+P to print/save as PDF.`);
+      }
+    } catch (err) {
+      toast.error("Export Failed", err.message);
+    }
   };
 
-  if (!user) return <LoginPanel onLogin={handleLogin} users={DEMO_USERS}/>;
+  if (!user) return <LoginPanel onLogin={handleLogin}/>;
 
   return (
     <div className="app">
@@ -143,6 +158,11 @@ export default function App() {
           <div><h1>KSP Crime Intelligence</h1><span className="subtitle">Karnataka State Police | SCRB</span></div>
         </div>
         <div className="header-right">
+          <div className="date-filter">
+            <input type="date" value={dateRange.start} onChange={e => setDateRange(prev => ({...prev, start: e.target.value}))} className="date-input"/>
+            <span>to</span>
+            <input type="date" value={dateRange.end} onChange={e => setDateRange(prev => ({...prev, end: e.target.value}))} className="date-input"/>
+          </div>
           <span className="role-badge">{user.role.toUpperCase()}</span>
           <span className="officer-name">{user.name}</span>
           <select value={lang} onChange={e=>setLang(e.target.value)} className="lang-select">
@@ -159,11 +179,16 @@ export default function App() {
       </header>
 
       <nav className="tab-nav">
-        {["chat","results","chart","network","map","analysis"].map(tab=>(
+        {["dashboard","chat","results","chart","network","map","analysis","matcher"].map(tab=>(
           <button key={tab} className={`tab-btn ${activeTab===tab?"active":""}`} onClick={()=>setActiveTab(tab)}>
-            {tab==="chat"&&"💬 Chat"}{tab==="results"&&`📋 Results${lastResponse?.resultCount>0?` (${lastResponse.resultCount})`:""}`}{tab==="chart"&&"📊 Trends"}{tab==="network"&&"🕸️ Network"}{tab==="map"&&"🗺️ Map"}{tab==="analysis"&&"🎯 Analysis"}
+            {tab==="dashboard"&&"🏠 Dashboard"}{tab==="chat"&&"💬 Chat"}{tab==="results"&&`📋 Results${lastResponse?.resultCount>0?` (${lastResponse.resultCount})`:""}`}{tab==="chart"&&"📊 Trends"}{tab==="network"&&"🕸️ Network"}{tab==="map"&&"🗺️ Map"}{tab==="analysis"&&"🎯 Analysis"}{tab==="matcher"&&"🔍 Matcher"}
           </button>
         ))}
+        {user?.role === "ADMIN" && (
+          <button className={`tab-btn ${activeTab==="admin"?"active":""}`} onClick={()=>setActiveTab("admin")}>
+            ⚙️ Admin
+          </button>
+        )}
       </nav>
 
       <div className="main">
@@ -203,11 +228,18 @@ export default function App() {
         </div>
 
         <div className="right-panel">
-          {activeTab==="results"&&<ResultsPanel response={lastResponse}/>}
-          {activeTab==="chart"&&<ChartPanel response={lastResponse}/>}
-          {activeTab==="network"&&<NetworkGraph response={lastResponse}/>}
-          {activeTab==="analysis"&&<FactorAnalysis/>}
-          {activeTab==="map"&&<CrimeMap/>}
+          <ErrorBoundary>
+            <Suspense fallback={<div className="analysis-panel"><div className="loading-spinner"><div className="spinner"></div><p>Loading module...</p></div></div>}>
+              {activeTab==="dashboard"&&<Dashboard/>}
+              {activeTab==="results"&&<ResultsPanel/>}
+              {activeTab==="chart"&&<ChartPanel/>}
+              {activeTab==="network"&&<NetworkGraph/>}
+              {activeTab==="analysis"&&<FactorAnalysis/>}
+              {activeTab==="map"&&<CrimeMap/>}
+              {activeTab==="matcher"&&<SimilarCaseMatcher/>}
+              {activeTab==="admin"&&<AdminPanel/>}
+            </Suspense>
+          </ErrorBoundary>
           {activeTab==="chat"&&!lastResponse&&(
             <div className="welcome-dashboard">
               <div className="welcome-header">

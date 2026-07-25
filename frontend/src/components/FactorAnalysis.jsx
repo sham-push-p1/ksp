@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef } from "react";
+import { useApp } from "../context/AppContext";
 import { api } from "../utils/api";
 
 export default function FactorAnalysis() {
+  const { dateRange } = useApp();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -36,160 +38,97 @@ export default function FactorAnalysis() {
     return () => { active = false; };
   }, []);
 
+  // --- 1. Victim Demographics Grouped Bar Chart (Social tab) ---
   useEffect(() => {
-    if (!data || loading || !window.Chart) return;
-
-    // --- 1. Victim Demographics Grouped Bar Chart ---
-    if (subTab === "social" && victimChartRef.current) {
-      victimChart.current?.destroy();
-      const ageGroups = ["Under 18", "18-35", "36-60", "Above 60"];
-      
-      const maleData = ageGroups.map(age => {
-        const found = data.victimDemographics.find(d => d.AgeGroup === age && d.Gender === "Male");
-        return found ? found.Count : 0;
-      });
-
-      const femaleData = ageGroups.map(age => {
-        const found = data.victimDemographics.find(d => d.AgeGroup === age && d.Gender === "Female");
-        return found ? found.Count : 0;
-      });
-
-      victimChart.current = new window.Chart(victimChartRef.current, {
-        type: "bar",
-        data: {
-          labels: ageGroups,
-          datasets: [
-            {
-              label: "Male",
-              data: maleData,
-              backgroundColor: "rgba(42,157,143,0.8)",
-              borderColor: "#2a9d8f",
-              borderWidth: 1.5,
-              borderRadius: 4
-            },
-            {
-              label: "Female",
-              data: femaleData,
-              backgroundColor: "rgba(230,57,70,0.8)",
-              borderColor: "#e63946",
-              borderWidth: 1.5,
-              borderRadius: 4
-            }
-          ]
+    if (!data || loading || subTab !== "social" || !victimChartRef.current || !window.Chart) return;
+    victimChart.current?.destroy();
+    const ageGroups = ["Under 18", "18-35", "36-60", "Above 60"];
+    const maleData   = ageGroups.map(age => { const f = data.victimDemographics.find(d => d.AgeGroup === age && d.Gender === "Male");   return f ? f.Count : 0; });
+    const femaleData = ageGroups.map(age => { const f = data.victimDemographics.find(d => d.AgeGroup === age && d.Gender === "Female"); return f ? f.Count : 0; });
+    victimChart.current = new window.Chart(victimChartRef.current, {
+      type: "bar",
+      data: {
+        labels: ageGroups,
+        datasets: [
+          { label: "Male",   data: maleData,   backgroundColor: "rgba(42,157,143,0.8)",  borderColor: "#2a9d8f", borderWidth: 1.5, borderRadius: 4 },
+          { label: "Female", data: femaleData, backgroundColor: "rgba(230,57,70,0.8)",   borderColor: "#e63946", borderWidth: 1.5, borderRadius: 4 },
+        ],
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          title:  { display: true, text: "Victim Profile by Age & Gender", font: { size: 14, weight: "bold" } },
+          legend: { position: "top" },
         },
-        options: {
-          responsive: true,
-          plugins: {
-            title: { display: true, text: "Victim Profile by Age & Gender", font: { size: 14, weight: "bold" } },
-            legend: { position: "top" }
-          },
-          scales: {
-            y: { beginAtZero: true, title: { display: true, text: "Number of Victims" } }
-          }
-        }
-      });
-    }
+        scales: { y: { beginAtZero: true, title: { display: true, text: "Number of Victims" } } },
+      },
+    });
+    return () => { victimChart.current?.destroy(); victimChart.current = null; };
+  }, [data, loading, subTab]);
 
-    // --- 2. Modus Operandi Doughnut Chart ---
-    if (subTab === "behavioural" && moChartRef.current) {
-      moChart.current?.destroy();
-      const mo = data.modusOperandi || {};
-      const labels = [
-        "Weapon Attack",
-        "Burglary / Break-in",
-        "Transit Robbery",
-        "Financial / Cyber Fraud",
-        "Narcotics Offence",
-        "Harassment / Assault"
-      ];
-      const values = [
-        mo.WeaponAttack || 0,
-        mo.Burglary || 0,
-        mo.TransitRobbery || 0,
-        mo.CyberFraud || 0,
-        mo.NarcoticsOffence || 0,
-        mo.HarassmentAssault || 0
-      ];
-
-      moChart.current = new window.Chart(moChartRef.current, {
-        type: "doughnut",
-        data: {
-          labels,
-          datasets: [{
-            data: values,
-            backgroundColor: [
-              "rgba(230,57,70,0.85)",  // Red
-              "rgba(244,162,97,0.85)",  // Amber
-              "rgba(42,157,143,0.85)",  // Teal
-              "rgba(22,33,62,0.85)",    // Navy Light
-              "rgba(142,68,173,0.85)",   // Purple
-              "rgba(52,152,219,0.85)"    // Blue
-            ],
-            borderColor: "#ffffff",
-            borderWidth: 2
-          }]
+  // --- 2. Modus Operandi Doughnut Chart (Behavioural tab) ---
+  useEffect(() => {
+    if (!data || loading || subTab !== "behavioural" || !moChartRef.current || !window.Chart) return;
+    moChart.current?.destroy();
+    const mo = data.modusOperandi || {};
+    moChart.current = new window.Chart(moChartRef.current, {
+      type: "doughnut",
+      data: {
+        labels: ["Weapon Attack", "Burglary / Break-in", "Transit Robbery", "Financial / Cyber Fraud", "Narcotics Offence", "Harassment / Assault"],
+        datasets: [{
+          data: [mo.WeaponAttack||0, mo.Burglary||0, mo.TransitRobbery||0, mo.CyberFraud||0, mo.NarcoticsOffence||0, mo.HarassmentAssault||0],
+          backgroundColor: [
+            "rgba(230,57,70,0.85)", "rgba(244,162,97,0.85)", "rgba(42,157,143,0.85)",
+            "rgba(22,33,62,0.85)",  "rgba(142,68,173,0.85)", "rgba(52,152,219,0.85)",
+          ],
+          borderColor: "#ffffff",
+          borderWidth: 2,
+        }],
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          title:  { display: true, text: "Modus Operandi Frequency Breakdown", font: { size: 14, weight: "bold" } },
+          legend: { position: "right" },
         },
-        options: {
-          responsive: true,
-          plugins: {
-            title: { display: true, text: "Modus Operandi Frequency Breakdown", font: { size: 14, weight: "bold" } },
-            legend: { position: "right" }
-          },
-          cutout: "60%"
-        }
-      });
-    }
+        cutout: "60%",
+      },
+    });
+    return () => { moChart.current?.destroy(); moChart.current = null; };
+  }, [data, loading, subTab]);
 
-    // --- 3. Temporal time-of-day chart ---
-    if (subTab === "behavioural" && temporalChartRef.current) {
-      temporalChart.current?.destroy();
-      
-      const timeSlots = [
-        "Morning (04:00 - 10:00)",
-        "Afternoon (10:00 - 16:00)",
-        "Evening (16:00 - 22:00)",
-        "Night (22:00 - 04:00)"
-      ];
-      
-      const counts = timeSlots.map(slot => {
-        const found = data.temporalPatterns.find(t => t.TimeOfDay === slot);
-        return found ? found.Count : 0;
-      });
-
-      temporalChart.current = new window.Chart(temporalChartRef.current, {
-        type: "line",
-        data: {
-          labels: ["Morning", "Afternoon", "Evening", "Night"],
-          datasets: [{
-            label: "Incident Frequency",
-            data: counts,
-            borderColor: "#1a1a2e",
-            backgroundColor: "rgba(26,26,46,0.08)",
-            borderWidth: 2.5,
-            fill: true,
-            tension: 0.4,
-            pointBackgroundColor: "#e63946",
-            pointRadius: 5
-          }]
+  // --- 3. Temporal time-of-day Line Chart (Behavioural tab) ---
+  useEffect(() => {
+    if (!data || loading || subTab !== "behavioural" || !temporalChartRef.current || !window.Chart) return;
+    temporalChart.current?.destroy();
+    const timeSlots = ["Morning (04:00 - 10:00)", "Afternoon (10:00 - 16:00)", "Evening (16:00 - 22:00)", "Night (22:00 - 04:00)"];
+    const counts = timeSlots.map(slot => { const f = data.temporalPatterns.find(t => t.TimeOfDay === slot); return f ? f.Count : 0; });
+    temporalChart.current = new window.Chart(temporalChartRef.current, {
+      type: "line",
+      data: {
+        labels: ["Morning", "Afternoon", "Evening", "Night"],
+        datasets: [{
+          label: "Incident Frequency",
+          data: counts,
+          borderColor: "#1a1a2e",
+          backgroundColor: "rgba(26,26,46,0.08)",
+          borderWidth: 2.5,
+          fill: true,
+          tension: 0.4,
+          pointBackgroundColor: "#e63946",
+          pointRadius: 5,
+        }],
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          title:  { display: true, text: "Crime Distribution by Time of Day", font: { size: 14, weight: "bold" } },
+          legend: { display: false },
         },
-        options: {
-          responsive: true,
-          plugins: {
-            title: { display: true, text: "Crime Distribution by Time of Day", font: { size: 14, weight: "bold" } },
-            legend: { display: false }
-          },
-          scales: {
-            y: { beginAtZero: true }
-          }
-        }
-      });
-    }
-
-    return () => {
-      victimChart.current?.destroy();
-      moChart.current?.destroy();
-      temporalChart.current?.destroy();
-    };
+        scales: { y: { beginAtZero: true } },
+      },
+    });
+    return () => { temporalChart.current?.destroy(); temporalChart.current = null; };
   }, [data, loading, subTab]);
 
   if (loading) return (

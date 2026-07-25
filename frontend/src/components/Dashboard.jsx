@@ -1,0 +1,144 @@
+import React, { useEffect, useState, useRef } from "react";
+import { useApp } from "../context/AppContext";
+import { api } from "../utils/api";
+import styles from "./Dashboard.module.css";
+
+export default function Dashboard() {
+  const { dateRange } = useApp();
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const statusChartRef = useRef(null);
+  const topCrimesChartRef = useRef(null);
+  const statusChart = useRef(null);
+  const topCrimesChart = useRef(null);
+
+  useEffect(() => {
+    let active = true;
+    const loadDashboard = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await api.getDashboard(dateRange);
+        if (active) setData(res);
+      } catch (err) {
+        if (active) setError(err.message);
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    loadDashboard();
+    return () => { active = false; };
+  }, [dateRange]);
+
+  // Chart 1: Case Status Breakdown (Doughnut)
+  useEffect(() => {
+    if (!data || loading || !statusChartRef.current || !window.Chart) return;
+    statusChart.current?.destroy();
+    
+    const labels = data.statusBreakdown.map(s => s.CaseStatus);
+    const counts = data.statusBreakdown.map(s => s.Count);
+    const colors = [
+      "rgba(42,157,143,0.85)", "rgba(244,162,97,0.85)", "rgba(230,57,70,0.85)", 
+      "rgba(52,152,219,0.85)", "rgba(142,68,173,0.85)", "rgba(100,100,100,0.85)"
+    ];
+
+    statusChart.current = new window.Chart(statusChartRef.current, {
+      type: "doughnut",
+      data: {
+        labels,
+        datasets: [{ data: counts, backgroundColor: colors, borderWidth: 2, borderColor: "#ffffff" }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          title: { display: true, text: "Case Status Distribution", font: { size: 14, weight: "bold" } },
+          legend: { position: "right" }
+        },
+        cutout: "60%"
+      }
+    });
+
+    return () => { statusChart.current?.destroy(); statusChart.current = null; };
+  }, [data, loading]);
+
+  // Chart 2: Top 5 Crimes (Bar)
+  useEffect(() => {
+    if (!data || loading || !topCrimesChartRef.current || !window.Chart) return;
+    topCrimesChart.current?.destroy();
+
+    const labels = data.topCrimes.map(c => c.CrimeMajorHead);
+    const counts = data.topCrimes.map(c => c.Count);
+
+    topCrimesChart.current = new window.Chart(topCrimesChartRef.current, {
+      type: "bar",
+      data: {
+        labels,
+        datasets: [{
+          label: "Number of Cases",
+          data: counts,
+          backgroundColor: "rgba(230,57,70,0.8)",
+          borderColor: "#e63946",
+          borderWidth: 1.5,
+          borderRadius: 4
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          title: { display: true, text: "Top 5 Crime Categories", font: { size: 14, weight: "bold" } },
+          legend: { display: false }
+        },
+        scales: { y: { beginAtZero: true } }
+      }
+    });
+
+    return () => { topCrimesChart.current?.destroy(); topCrimesChart.current = null; };
+  }, [data, loading]);
+
+
+  if (loading) return (
+    <div className="analysis-panel">
+      <div className="loading-spinner"><div className="spinner"></div><p>Aggregating dashboard metrics...</p></div>
+    </div>
+  );
+  if (error) return <div className="analysis-panel error"><p>Error: {error}</p></div>;
+  if (!data) return null;
+
+  return (
+    <div className={styles.container}>
+      <div className={styles.header}>
+        <h3 className={styles.title}>Jurisdiction Overview</h3>
+      </div>
+      
+      <div className={styles.kpiGrid}>
+        <div className={styles.kpiCard}>
+          <div className={styles.kpiValue} style={{ color: "var(--text)" }}>{data.kpis.TotalCases}</div>
+          <div className={styles.kpiLabel}>Total Cases</div>
+        </div>
+        <div className={styles.kpiCard}>
+          <div className={styles.kpiValue} style={{ color: "#f4a261" }}>{data.kpis.PendingCases}</div>
+          <div className={styles.kpiLabel}>Pending / Under Investigation</div>
+        </div>
+        <div className={styles.kpiCard}>
+          <div className={styles.kpiValue} style={{ color: "#e63946" }}>{data.kpis.HeinousCrimes}</div>
+          <div className={styles.kpiLabel}>Heinous Crimes</div>
+        </div>
+        <div className={styles.kpiCard}>
+          <div className={styles.kpiValue} style={{ color: "#2a9d8f" }}>{data.kpis.TotalArrests}</div>
+          <div className={styles.kpiLabel}>Total Arrests</div>
+        </div>
+      </div>
+
+      <div className={styles.chartGrid}>
+        <div className={styles.chartCard}>
+          <canvas ref={statusChartRef} />
+        </div>
+        <div className={styles.chartCard}>
+          <canvas ref={topCrimesChartRef} />
+        </div>
+      </div>
+    </div>
+  );
+}

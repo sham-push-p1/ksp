@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  ksp-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ksp_crime_ai
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    volumes:
+      - ksp_data:/app/data
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - DB_PATH=/app/data/database.sqlite
+      # Ollama host configuration (assuming Ollama is running on the host machine)
+      # Use host.docker.internal for Mac/Windows, or the host's IP for Linux
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      # Adjust if your production server runs on a different port/domain
+      - FRONTEND_ORIGIN=http://localhost:3001
+
+volumes:
+  ksp_data:
+    name: ksp_persistent_data
