@@ -16,18 +16,24 @@ const db = require("../db");
 async function generateAnomalyAlerts(whereClause, params) {
   try {
     // 1. Group data by DistrictName, CrimeMajorHead, and Month for the last 12 months.
-    // In our SQLite seeded DB, CrimeRegisteredDate is a string "YYYY-MM-DD"
+    const isPg = db.client.config.client === 'pg';
+    const isMysql = db.client.config.client === 'mysql2';
+    
+    let last12Months = "date('now', '-12 months')";
+    if (isPg) last12Months = "CURRENT_DATE - INTERVAL '12 months'";
+    else if (isMysql) last12Months = "DATE_SUB(CURDATE(), INTERVAL 12 MONTH)";
+
     const historyQuery = `
       SELECT 
-        DistrictName, 
-        CrimeMajorHead, 
-        substr(CrimeRegisteredDate, 1, 7) AS MonthStr,
-        COUNT(*) AS MonthlyCases
-      FROM CaseSummaryFlat
+        "DistrictName", 
+        "CrimeMajorHead", 
+        substr("CrimeRegisteredDate", 1, 7) AS "MonthStr",
+        COUNT(*) AS "MonthlyCases"
+      FROM "CaseSummaryFlat"
       WHERE ${whereClause} 
-        AND CrimeRegisteredDate >= date('now', '-12 months')
-      GROUP BY DistrictName, CrimeMajorHead, MonthStr
-      ORDER BY DistrictName, CrimeMajorHead, MonthStr ASC
+        AND CAST("CrimeRegisteredDate" AS DATE) >= ${last12Months}
+      GROUP BY "DistrictName", "CrimeMajorHead", "MonthStr"
+      ORDER BY "DistrictName", "CrimeMajorHead", "MonthStr" ASC
     `;
     
     const rawData = await db.raw(historyQuery, params);

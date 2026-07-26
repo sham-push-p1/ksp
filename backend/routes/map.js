@@ -25,25 +25,25 @@ router.get("/map-data", authenticateToken, async (req, res) => {
 
     let query = `
       SELECT
-        CaseMasterID, CrimeNo, Latitude, Longitude,
-        CrimeMajorHead, CaseStatus, PoliceStationName, DistrictName,
-        IncidentFromDate, CaseCategoryName, GravityOffence
-      FROM CaseSummaryFlat
-      WHERE Latitude IS NOT NULL AND Longitude IS NOT NULL
-        AND Latitude  != '' AND Longitude != ''
-        AND CAST(Latitude  AS REAL) BETWEEN ? AND ?
-        AND CAST(Longitude AS REAL) BETWEEN ? AND ?
+        "CaseMasterID", "CrimeNo", "Latitude", "Longitude",
+        "CrimeMajorHead", "CaseStatus", "PoliceStationName", "DistrictName",
+        "IncidentFromDate", "CaseCategoryName", "GravityOffence"
+      FROM "CaseSummaryFlat"
+      WHERE "Latitude" IS NOT NULL AND "Longitude" IS NOT NULL
+        AND "Latitude" != 0 AND "Longitude" != 0
+        AND "Latitude" BETWEEN ? AND ?
+        AND "Longitude" BETWEEN ? AND ?
     `;
     const params = [KA_LAT.min, KA_LAT.max, KA_LNG.min, KA_LNG.max];
 
-    if (start) { query += " AND date(IncidentFromDate) >= date(?)"; params.push(start); }
-    if (end)   { query += " AND date(IncidentFromDate) <= date(?)"; params.push(end); }
+    if (start) { query += ' AND CAST("IncidentFromDate" AS DATE) >= CAST(? AS DATE)'; params.push(start); }
+    if (end)   { query += ' AND CAST("IncidentFromDate" AS DATE) <= CAST(? AS DATE)'; params.push(end); }
 
     if (user.stationName) {
-      query += " AND PoliceStationName = ?";
+      query += ' AND "PoliceStationName" = ?';
       params.push(user.stationName);
     } else if (user.districtName) {
-      query += " AND DistrictName = ?";
+      query += ' AND "DistrictName" = ?';
       params.push(user.districtName);
     }
 

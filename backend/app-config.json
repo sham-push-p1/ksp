@@ -1,0 +1,9 @@
+{
+  "env": "production",
+  "stack": "node18",
+  "build_path": ".",
+  "command": "npm start",
+  "environment": {
+    "NODE_ENV": "catalyst"
+  }
+}

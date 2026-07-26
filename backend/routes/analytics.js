@@ -19,14 +19,14 @@ function buildFilters(req) {
   let where = "1=1";
   const params = [];
 
-  if (start) { where += " AND date(IncidentFromDate) >= date(?)"; params.push(start); }
-  if (end)   { where += " AND date(IncidentFromDate) <= date(?)"; params.push(end); }
+  if (start) { where += ' AND CAST("IncidentFromDate" AS DATE) >= CAST(? AS DATE)'; params.push(start); }
+  if (end)   { where += ' AND CAST("IncidentFromDate" AS DATE) <= CAST(? AS DATE)'; params.push(end); }
   
   if (user.stationName) {
-    where += " AND PoliceStationName = ?";
+    where += ' AND "PoliceStationName" = ?';
     params.push(user.stationName);
   } else if (user.districtName) {
-    where += " AND DistrictName = ?";
+    where += ' AND "DistrictName" = ?';
     params.push(user.districtName);
   }
   return { where, params };
@@ -39,36 +39,36 @@ router.get("/dashboard", authenticateToken, async (req, res) => {
 
     const kpisResult = await db.raw(`
       SELECT 
-        COUNT(*) AS TotalCases,
-        SUM(CASE WHEN CaseStatus = 'Under Investigation' THEN 1 ELSE 0 END) AS PendingCases,
-        SUM(CASE WHEN GravityOffence = 'Heinous' THEN 1 ELSE 0 END) AS HeinousCrimes
-      FROM CaseSummaryFlat
+        COUNT(*) AS "TotalCases",
+        SUM(CASE WHEN "CaseStatus" = 'Under Investigation' THEN 1 ELSE 0 END) AS "PendingCases",
+        SUM(CASE WHEN "GravityOffence" = 'Heinous' THEN 1 ELSE 0 END) AS "HeinousCrimes"
+      FROM "CaseSummaryFlat"
       WHERE ${where}
     `, params);
     const kpis = kpisResult[0] || { TotalCases: 0, PendingCases: 0, HeinousCrimes: 0 };
 
     const arrestStatsResult = await db.raw(`
-      SELECT COUNT(*) AS TotalArrests
-      FROM AccusedSummaryFlat
-      WHERE CaseMasterID IN (SELECT CaseMasterID FROM CaseSummaryFlat WHERE ${where})
-        AND ArrestDate IS NOT NULL AND ArrestDate != ''
+      SELECT COUNT(*) AS "TotalArrests"
+      FROM "AccusedSummaryFlat"
+      WHERE "CaseMasterID" IN (SELECT "CaseMasterID" FROM "CaseSummaryFlat" WHERE ${where})
+        AND "ArrestDate" IS NOT NULL AND "ArrestDate" != ''
     `, params);
     kpis.TotalArrests = arrestStatsResult[0]?.TotalArrests || 0;
 
     const statusBreakdown = await db.raw(`
-      SELECT CaseStatus, COUNT(*) AS Count
-      FROM CaseSummaryFlat
+      SELECT "CaseStatus", COUNT(*) AS "Count"
+      FROM "CaseSummaryFlat"
       WHERE ${where}
-      GROUP BY CaseStatus
-      ORDER BY Count DESC
+      GROUP BY "CaseStatus"
+      ORDER BY "Count" DESC
     `, params);
 
     const topCrimes = await db.raw(`
-      SELECT CrimeMajorHead, COUNT(*) AS Count
-      FROM CaseSummaryFlat
+      SELECT "CrimeMajorHead", COUNT(*) AS "Count"
+      FROM "CaseSummaryFlat"
       WHERE ${where}
-      GROUP BY CrimeMajorHead
-      ORDER BY Count DESC
+      GROUP BY "CrimeMajorHead"
+      ORDER BY "Count" DESC
       LIMIT 5
     `, params);
 
@@ -97,51 +97,58 @@ router.get("/analytics", authenticateToken, async (req, res) => {
     const victimDemographics = await db.raw(`
       SELECT
         CASE
-          WHEN AgeYear < 18 THEN 'Under 18'
-          WHEN AgeYear BETWEEN 18 AND 35 THEN '18-35'
-          WHEN AgeYear BETWEEN 36 AND 60 THEN '36-60'
+          WHEN "AgeYear" < 18 THEN 'Under 18'
+          WHEN "AgeYear" BETWEEN 18 AND 35 THEN '18-35'
+          WHEN "AgeYear" BETWEEN 36 AND 60 THEN '36-60'
           ELSE 'Above 60'
-        END AS AgeGroup,
-        Gender,
-        COUNT(*) AS Count
-      FROM VictimSummaryFlat
-      WHERE CaseMasterID IN (SELECT CaseMasterID FROM CaseSummaryFlat WHERE ${where})
-      GROUP BY AgeGroup, Gender
+        END AS "AgeGroup",
+        "Gender",
+        COUNT(*) AS "Count"
+      FROM "VictimSummaryFlat"
+      WHERE "CaseMasterID" IN (SELECT "CaseMasterID" FROM "CaseSummaryFlat" WHERE ${where})
+      GROUP BY "AgeGroup", "Gender"
     `, params);
 
     const complainantOccupations = await db.raw(`
-      SELECT Occupation, COUNT(*) AS Count
-      FROM ComplainantSummaryFlat
-      WHERE CaseMasterID IN (SELECT CaseMasterID FROM CaseSummaryFlat WHERE ${where})
-      GROUP BY Occupation
-      ORDER BY Count DESC
+      SELECT "Occupation", COUNT(*) AS "Count"
+      FROM "ComplainantSummaryFlat"
+      WHERE "CaseMasterID" IN (SELECT "CaseMasterID" FROM "CaseSummaryFlat" WHERE ${where})
+      GROUP BY "Occupation"
+      ORDER BY "Count" DESC
     `, params);
 
     const moResult = await db.raw(`
       SELECT
-        SUM(CASE WHEN BriefFacts LIKE '%sharp weapon%' OR BriefFacts LIKE '%knife%' THEN 1 ELSE 0 END) AS WeaponAttack,
-        SUM(CASE WHEN BriefFacts LIKE '%broke into%' OR BriefFacts LIKE '%lock%' THEN 1 ELSE 0 END) AS Burglary,
-        SUM(CASE WHEN BriefFacts LIKE '%highway%' OR BriefFacts LIKE '%bus stand%' OR BriefFacts LIKE '%main road%' THEN 1 ELSE 0 END) AS TransitRobbery,
-        SUM(CASE WHEN BriefFacts LIKE '%cyber%' OR BriefFacts LIKE '%online%' OR BriefFacts LIKE '%bank%' OR BriefFacts LIKE '%forged%' THEN 1 ELSE 0 END) AS CyberFraud,
-        SUM(CASE WHEN BriefFacts LIKE '%drug%' OR BriefFacts LIKE '%narcotic%' OR BriefFacts LIKE '%ganja%' THEN 1 ELSE 0 END) AS NarcoticsOffence,
-        SUM(CASE WHEN BriefFacts LIKE '%harassed%' OR BriefFacts LIKE '%dowry%' OR BriefFacts LIKE '%assaulted%' THEN 1 ELSE 0 END) AS HarassmentAssault
-      FROM CaseSummaryFlat
+        SUM(CASE WHEN "BriefFacts" LIKE '%sharp weapon%' OR "BriefFacts" LIKE '%knife%' THEN 1 ELSE 0 END) AS "WeaponAttack",
+        SUM(CASE WHEN "BriefFacts" LIKE '%broke into%' OR "BriefFacts" LIKE '%lock%' THEN 1 ELSE 0 END) AS "Burglary",
+        SUM(CASE WHEN "BriefFacts" LIKE '%highway%' OR "BriefFacts" LIKE '%bus stand%' OR "BriefFacts" LIKE '%main road%' THEN 1 ELSE 0 END) AS "TransitRobbery",
+        SUM(CASE WHEN "BriefFacts" LIKE '%cyber%' OR "BriefFacts" LIKE '%online%' OR "BriefFacts" LIKE '%bank%' OR "BriefFacts" LIKE '%forged%' THEN 1 ELSE 0 END) AS "CyberFraud",
+        SUM(CASE WHEN "BriefFacts" LIKE '%drug%' OR "BriefFacts" LIKE '%narcotic%' OR "BriefFacts" LIKE '%ganja%' THEN 1 ELSE 0 END) AS "NarcoticsOffence",
+        SUM(CASE WHEN "BriefFacts" LIKE '%harassed%' OR "BriefFacts" LIKE '%dowry%' OR "BriefFacts" LIKE '%assaulted%' THEN 1 ELSE 0 END) AS "HarassmentAssault"
+      FROM "CaseSummaryFlat"
       WHERE ${where}
     `, params);
     const modusOperandi = moResult[0] || {};
 
+    const isPg = db.client.config.client === 'pg';
+    const isMysql = db.client.config.client === 'mysql2';
+    
+    let extractHour = "CAST(strftime('%H', \"IncidentFromDate\") AS INTEGER)";
+    if (isPg) extractHour = 'EXTRACT(HOUR FROM CAST("IncidentFromDate" AS TIMESTAMP))';
+    else if (isMysql) extractHour = 'HOUR("IncidentFromDate")';
+    
     const temporalPatterns = await db.raw(`
-      SELECT
-        CASE
-          WHEN CAST(strftime('%H', IncidentFromDate) AS INTEGER) IN (22, 23, 0, 1, 2, 3) THEN 'Night (22:00 - 04:00)'
-          WHEN CAST(strftime('%H', IncidentFromDate) AS INTEGER) BETWEEN 4 AND 9 THEN 'Morning (04:00 - 10:00)'
-          WHEN CAST(strftime('%H', IncidentFromDate) AS INTEGER) BETWEEN 10 AND 15 THEN 'Afternoon (10:00 - 16:00)'
+      SELECT 
+        CASE 
+          WHEN ${extractHour} IN (22, 23, 0, 1, 2, 3) THEN 'Night (22:00 - 04:00)'
+          WHEN ${extractHour} IN (4, 5, 6, 7, 8, 9) THEN 'Morning (04:00 - 10:00)'
+          WHEN ${extractHour} IN (10, 11, 12, 13, 14, 15) THEN 'Afternoon (10:00 - 16:00)'
           ELSE 'Evening (16:00 - 22:00)'
-        END AS TimeOfDay,
-        COUNT(*) AS Count
-      FROM CaseSummaryFlat
+        END AS "TimeOfDay",
+        COUNT(*) AS "Count"
+      FROM "CaseSummaryFlat"
       WHERE ${where}
-      GROUP BY TimeOfDay
+      GROUP BY "TimeOfDay"
     `, params);
 
     res.json({ victimDemographics, complainantOccupations, modusOperandi, temporalPatterns });
@@ -156,7 +163,7 @@ router.get("/audit-log", authenticateToken, async (req, res) => {
   if (req.user.role !== "scrb_analyst" && req.user.role !== "ADMIN") {
     return res.status(403).json({ error: "Access denied. Admin access only." });
   }
-  const logs = await db.raw("SELECT * FROM QueryAuditLog ORDER BY ID DESC LIMIT 200");
+  const logs = await db.raw('SELECT * FROM "QueryAuditLog" ORDER BY ID DESC LIMIT 200');
   res.json(logs);
 });
 

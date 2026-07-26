@@ -17,6 +17,16 @@ const router = express.Router();
 // ─── SQL Safety ───────────────────────────────────────────────────────────────
 
 const BLOCKED = ["INSERT","UPDATE","DELETE","DROP","CREATE","ALTER","TRUNCATE","--","/*"];
+const TABLES = ['CaseSummaryFlat', 'AccusedSummaryFlat', 'VictimSummaryFlat', 'ComplainantSummaryFlat', 'FinancialTransactionsFlat', 'SystemUsers', 'QueryAuditLog', 'KnowledgeBase'];
+
+function quoteTables(sql) {
+  let q = sql;
+  for (const t of TABLES) {
+    q = q.replace(new RegExp(`(?<!")\\b${t}\\b(?!")`, 'gi'), `"${t}"`);
+  }
+  return q;
+}
+
 function validateSQL(q) {
   const u = q.toUpperCase().trim();
   if (!u.startsWith("SELECT")) return { safe:false, reason:"Only SELECT allowed" };
@@ -50,10 +60,10 @@ function applyRBAC(sql, ctx, existing = []) {
   let params = [...existing];
 
   if (cfg.stationScoped && ctx.stationName) {
-    condition = `PoliceStationName = ?`;
+    condition = '"PoliceStationName" = ?';
     params.push(ctx.stationName);
   } else if (cfg.districtScoped && ctx.districtName) {
-    condition = `DistrictName = ?`;
+    condition = '"DistrictName" = ?';
     params.push(ctx.districtName);
   }
 
@@ -92,7 +102,7 @@ function buildSQLPrompt(dateRange) {
     
   let dateRule = "";
   if (dateRange && dateRange.start && dateRange.end) {
-    dateRule = `\n8. STRICT DATE CONSTRAINT: All queries must implicitly filter for records between '${dateRange.start}' and '${dateRange.end}' using the IncidentFromDate column, unless the user explicitly asks for a different time period.`;
+    dateRule = `\n8. STRICT DATE CONSTRAINT: All queries must implicitly filter for records between '${dateRange.start}' and '${dateRange.end}' using the "IncidentFromDate" column, unless the user explicitly asks for a different time period.`;
   }
 
   return `You are a PostgreSQL query generator for Karnataka Police crime database.
@@ -119,27 +129,29 @@ RULES:
 3. String values in single quotes. Dates as 'YYYY-MM-DD'.
 4. Add LIMIT 100 for record queries. No LIMIT for COUNT/GROUP BY aggregations.
 5. Output ONLY raw SQL — no markdown, no backticks, no explanation.
-6. For keywords representing drug trafficking, narcotics, marijuana, ganja, or drugs, search for CrimeMinorHead = 'NDPS Act' or query BriefFacts using LIKE '%drug%' or LIKE '%narcotic%' or LIKE '%contraband%'.
-7. When search terms or values are not exact matches for columns or values, use LIKE '%keyword%' on the BriefFacts column.${dateRule}
+6. For keywords representing drug trafficking, narcotics, marijuana, ganja, or drugs, search for "CrimeMinorHead" = 'NDPS Act' or query "BriefFacts" using LIKE '%drug%' or LIKE '%narcotic%' or LIKE '%contraband%'.
+7. When search terms or values are not exact matches for columns or values, use LIKE '%keyword%' on the "BriefFacts" column.
+8. ALL table names, column names, and aliases MUST be wrapped in double quotes. (e.g. SELECT "CrimeNo" FROM "CaseSummaryFlat" WHERE "CaseStatus" = 'Closed').
+9. Generate standard ANSI SQL that is compatible with MySQL and PostgreSQL.${dateRule}
 
 EXAMPLES:
 Q: How many murder cases in 2024?
-A: SELECT COUNT(*) AS TotalMurders FROM CaseSummaryFlat WHERE CrimeMinorHead = 'Murder' AND CrimeRegisteredDate >= '2024-01-01' AND CrimeRegisteredDate <= '2024-12-31'
+A: SELECT COUNT(*) AS "TotalMurders" FROM "CaseSummaryFlat" WHERE "CrimeMinorHead" = 'Murder' AND "CrimeRegisteredDate" >= '2024-01-01' AND "CrimeRegisteredDate" <= '2024-12-31'
 
 Q: Show robbery cases under investigation in Bengaluru Urban
-A: SELECT CrimeNo, CrimeRegisteredDate, PoliceStationName, CaseStatus FROM CaseSummaryFlat WHERE CrimeMinorHead = 'Robbery' AND CaseStatus = 'Under Investigation' AND DistrictName = 'Bengaluru Urban' LIMIT 100
+A: SELECT "CrimeNo", "CrimeRegisteredDate", "PoliceStationName", "CaseStatus" FROM "CaseSummaryFlat" WHERE "CrimeMinorHead" = 'Robbery' AND "CaseStatus" = 'Under Investigation' AND "DistrictName" = 'Bengaluru Urban' LIMIT 100
 
 Q: District-wise crime count
-A: SELECT DistrictName, COUNT(*) AS CaseCount FROM CaseSummaryFlat GROUP BY DistrictName ORDER BY CaseCount DESC
+A: SELECT "DistrictName", COUNT(*) AS "CaseCount" FROM "CaseSummaryFlat" GROUP BY "DistrictName" ORDER BY "CaseCount" DESC
 
 Q: Accused with multiple cases
-A: SELECT AccusedName, COUNT(*) AS CaseCount, MIN(CrimeMajorHead) AS PrimaryType FROM AccusedSummaryFlat GROUP BY AccusedName HAVING CaseCount > 1 ORDER BY CaseCount DESC LIMIT 50
+A: SELECT "AccusedName", COUNT(*) AS "CaseCount", MIN("CrimeMajorHead") AS "PrimaryType" FROM "AccusedSummaryFlat" GROUP BY "AccusedName" HAVING COUNT(*) > 1 ORDER BY "CaseCount" DESC LIMIT 50
 
 Q: Crime trend by month in 2024
-A: SELECT TO_CHAR(CAST(CrimeRegisteredDate AS DATE), 'YYYY-MM') AS Month, COUNT(*) AS Cases FROM CaseSummaryFlat WHERE CrimeRegisteredDate >= '2024-01-01' GROUP BY Month ORDER BY Month
+A: SELECT SUBSTR("CrimeRegisteredDate", 1, 7) AS "Month", COUNT(*) AS "Cases" FROM "CaseSummaryFlat" WHERE "CrimeRegisteredDate" >= '2024-01-01' GROUP BY "Month" ORDER BY "Month"
 
 Q: Show suspicious financial transactions for accused
-A: SELECT f.*, a.AccusedName FROM FinancialTransactionsFlat f JOIN AccusedSummaryFlat a ON f.AccusedMasterID = a.AccusedMasterID WHERE f.SuspiciousFlag = 1 LIMIT 50`;
+A: SELECT f.*, a."AccusedName" FROM "FinancialTransactionsFlat" f JOIN "AccusedSummaryFlat" a ON f."AccusedMasterID" = a."AccusedMasterID" WHERE f."SuspiciousFlag" = 1 LIMIT 50`;
 }
 
 // ─── POST /api/chat ───────────────────────────────────────────────────────────
@@ -193,15 +205,15 @@ router.post("/chat", authenticateToken, validateBody(chatSchema), async (req, re
 
     } else if (intent === INTENTS.TREND_ANALYSIS) {
       const breakdown = await db.raw(`
-        SELECT CrimeMajorHead, CrimeMinorHead, COUNT(*) AS CaseCount, DistrictName
-        FROM CaseSummaryFlat WHERE CrimeRegisteredDate >= '2022-01-01'
-        GROUP BY CrimeMajorHead, CrimeMinorHead, DistrictName
-        ORDER BY CaseCount DESC LIMIT 80
+        SELECT "CrimeMajorHead", "CrimeMinorHead", COUNT(*) AS "CaseCount", "DistrictName"
+        FROM "CaseSummaryFlat" WHERE "CrimeRegisteredDate" >= '2022-01-01'
+        GROUP BY "CrimeMajorHead", "CrimeMinorHead", "DistrictName"
+        ORDER BY "CaseCount" DESC LIMIT 80
       `);
       const monthly = await db.raw(`
-        SELECT substr(CrimeRegisteredDate,1,7) AS Month, COUNT(*) AS MonthlyCases
-        FROM CaseSummaryFlat WHERE CrimeRegisteredDate >= '2023-01-01'
-        GROUP BY Month ORDER BY Month
+        SELECT substr("CrimeRegisteredDate",1,7) AS "Month", COUNT(*) AS "MonthlyCases"
+        FROM "CaseSummaryFlat" WHERE "CrimeRegisteredDate" >= '2023-01-01'
+        GROUP BY "Month" ORDER BY "Month"
       `);
       const answer = await llmCall("smart",
         "You are a Karnataka Police crime analyst. Summarize these crime statistics in 2-3 clear sentences. Mention top crime type and total counts.",
@@ -233,6 +245,9 @@ ${matchesText}`;
     } else if (intent === INTENTS.HYBRID) {
       let rawSql = await llmCall("fast", buildSQLPrompt(dateRange), question, { temperature: 0.1, conversationHistory });
       rawSql = rawSql.replace(/```[a-z]*/gi,"").replace(/```/g,"").trim();
+      const hybridMatch = rawSql.match(/SELECT[\s\S]*/i);
+      if (hybridMatch) rawSql = hybridMatch[0];
+      rawSql = quoteTables(rawSql);
       let sqlResults = [], executedSql = "";
       if (validateSQL(rawSql).safe) {
         const scoped = applyRBAC(rawSql, userContext);
@@ -286,19 +301,20 @@ Instructions:
       } catch (err) { logger.warn("[NETWORK] Filter extraction failed: " + err.message, { userId: userContext.userId }); }
 
       const networkSql = `
-        SELECT AccusedName, COUNT(*) AS CaseCount,
-               MIN(CrimeMajorHead) AS PrimaryCrimeType,
-               MIN(DistrictName) AS PrimaryDistrict
-        FROM AccusedSummaryFlat
+        SELECT "AccusedName", COUNT(*) AS "CaseCount",
+               MIN("CrimeMajorHead") AS "PrimaryCrimeType",
+               MIN("DistrictName") AS "PrimaryDistrict"
+        FROM "AccusedSummaryFlat"
         ${whereClause}
-        GROUP BY AccusedName HAVING CaseCount > 1
-        ORDER BY CaseCount DESC LIMIT 60
+        GROUP BY "AccusedName" HAVING COUNT(*) > 1
+        ORDER BY "CaseCount" DESC LIMIT 60
       `;
       const scoped = applyRBAC(networkSql, userContext);
       const nodes = await db.raw(scoped.sql, scoped.params);
 
       response = {
         ...response,
+        results: nodes,
         graphData: {
           nodes: nodes.map((n,i) => ({ id:`a_${i}`, label:n.AccusedName, ...n })),
           summary: `${nodes.length} repeat offenders found${filterDetails}.`,
@@ -311,6 +327,9 @@ Instructions:
       // structured_query (default)
       let sql = await llmCall("fast", buildSQLPrompt(dateRange), question, { temperature:0.1, conversationHistory });
       sql = sql.replace(/```[a-z]*/gi,"").replace(/```/g,"").trim();
+      const match = sql.match(/SELECT[\s\S]*/i);
+      if (match) sql = match[0];
+      sql = quoteTables(sql);
 
       const v = validateSQL(sql);
       if (!v.safe) return res.status(400).json({ error:v.reason, generatedQuery:sql });
@@ -324,9 +343,12 @@ Instructions:
           `This SQL failed with error: "${e.message}"\nFailed SQL: ${scoped.sql}\nFix it. Output only corrected SQL.`,
           { temperature:0.1, conversationHistory });
         const fixClean = fix.replace(/```[a-z]*/gi,"").replace(/```/g,"").trim();
-        if (validateSQL(fixClean).safe) {
-          const scopedFix = applyRBAC(fixClean, userContext);
-          try { results = await db.raw(scopedFix.sql, scopedFix.params); sql = fixClean; }
+        const fixMatch = fixClean.match(/SELECT[\s\S]*/i);
+        let finalFix = fixMatch ? fixMatch[0] : fixClean;
+        finalFix = quoteTables(finalFix);
+        if (validateSQL(finalFix).safe) {
+          const scopedFix = applyRBAC(finalFix, userContext);
+          try { results = await db.raw(scopedFix.sql, scopedFix.params); sql = finalFix; }
           catch(e2) { return res.status(500).json({ error:e2.message, generatedQuery:scoped.sql }); }
         } else {
           return res.status(500).json({ error:e.message, generatedQuery:scoped.sql });

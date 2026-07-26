@@ -20,7 +20,8 @@
   },
   "scripts": {
     "start": "cross-env REACT_APP_API_URL=http://localhost:3001 react-scripts start",
-    "build": "cross-env REACT_APP_API_URL= react-scripts build"
+    "build": "cross-env REACT_APP_API_URL= react-scripts build",
+    "build:catalyst": "cross-env REACT_APP_API_URL=/server/ksp-backend react-scripts build"
   },
   "browserslist": {
     "production": [

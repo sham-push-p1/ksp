@@ -67,7 +67,7 @@ router.post("/match-cases", authenticateToken, validateBody(matcherSchema), asyn
       // Allow searching by exact CrimeNo or by similarity of incident description
       let results = [];
       
-      const caseRowRes = await db.raw("SELECT * FROM CaseSummaryFlat WHERE CrimeNo = ?", [searchTarget]);
+      const caseRowRes = await db.raw('SELECT * FROM "CaseSummaryFlat" WHERE CrimeNo = ?', [searchTarget]);
       const caseRow = caseRowRes.length > 0 ? caseRowRes[0] : null;
 
       if (caseRow) {

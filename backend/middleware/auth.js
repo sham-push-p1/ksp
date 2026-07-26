@@ -26,8 +26,7 @@ async function authenticateToken(req, res, next) {
   }
 
   try {
-    const sessionRes = await db.raw("SELECT * FROM UserSessions WHERE Token = ?", [token]);
-    const session = sessionRes.length > 0 ? sessionRes[0] : null;
+    const session = await db("UserSessions").where({ Token: token }).first();
 
     if (!session) {
       return res.status(401).json({ error: "Invalid or expired session. Please log in again." });
@@ -35,7 +34,7 @@ async function authenticateToken(req, res, next) {
 
     const now = new Date().toISOString();
     if (session.ExpiresAt && session.ExpiresAt < now) {
-      try { await db.raw("DELETE FROM UserSessions WHERE Token = ?", [token]); } catch {}
+      try { await db("UserSessions").where({ Token: token }).del(); } catch {}
       // Clear stale cookie if it was a cookie request
       if (cookieToken) res.clearCookie("ksp_session");
       return res.status(401).json({ error: "Your session has expired. Please log in again." });

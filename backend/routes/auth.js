@@ -61,12 +61,12 @@ router.post("/login", loginLimiter, validateBody(loginSchema), async (req, res) 
     });
 
     // Set HttpOnly cookie — JS cannot read this, protecting against XSS token theft.
-    // In production set Secure:true (requires HTTPS).
-    const isProduction = process.env.NODE_ENV === "production";
+    // Use Secure:true only if explicitly requested, as local Docker might be HTTP.
+    const isSecure = process.env.SECURE_COOKIE === "true";
     res.cookie("ksp_session", token, {
       httpOnly: true,
       sameSite: "Lax",
-      secure:   isProduction,
+      secure:   isSecure,
       maxAge:   24 * 60 * 60 * 1000, // 24 hours in ms
       path:     "/",
     });

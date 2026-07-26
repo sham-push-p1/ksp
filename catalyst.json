@@ -1,0 +1,11 @@
+{
+  "client": {
+    "source": "frontend/build"
+  },
+  "appsail": [
+    {
+      "name": "ksp-backend",
+      "source": "backend"
+    }
+  ]
+}

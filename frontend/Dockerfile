@@ -5,13 +5,13 @@ WORKDIR /app
 
 # Install dependencies
 COPY package*.json ./
-RUN npm ci
+RUN npm install --legacy-peer-deps
 
 # Copy the rest of the application
 COPY . .
 
 # Accept build args
-ARG REACT_APP_API_URL=/api
+ARG REACT_APP_API_URL=""
 ENV REACT_APP_API_URL=$REACT_APP_API_URL
 
 # Build the app (React scripts)

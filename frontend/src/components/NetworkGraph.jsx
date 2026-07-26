@@ -67,8 +67,12 @@ export default function NetworkGraph() {
         edges: { smooth: { type: "continuous" }, width: 1 },
         physics: {
           enabled: true,
-          stabilization: { iterations: 100 },
-          barnesHut: { gravitationalConstant: -3000, springLength: 80 },
+          solver: "barnesHut",
+          barnesHut: { 
+            gravitationalConstant: -2000, 
+            centralGravity: 0.3, 
+            springLength: 95 
+          },
         },
         interaction: { hover: true, tooltipDelay: 200 },
       }
@@ -82,6 +86,13 @@ export default function NetworkGraph() {
     });
 
     networkRef.current.on("deselectNode", () => setSelected(null));
+
+    // Ensure the canvas fully paints before fitting
+    setTimeout(() => {
+      if (networkRef.current) {
+        networkRef.current.fit({ animation: { duration: 800, easingFunction: "easeInOutQuad" } });
+      }
+    }, 800);
 
     return () => networkRef.current?.destroy();
   }, [response]);

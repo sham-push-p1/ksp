@@ -9,6 +9,7 @@
     "test": "cross-env NODE_ENV=test jest"
   },
   "dependencies": {
+    "@google/genai": "^2.13.0",
     "bcrypt": "^6.0.0",
     "better-sqlite3": "^9.4.3",
     "cookie-parser": "^1.4.7",
@@ -18,6 +19,7 @@
     "express-rate-limit": "^8.6.0",
     "helmet": "^8.3.0",
     "knex": "^3.3.0",
+    "mysql2": "^3.23.1",
     "pg": "^8.22.0",
     "winston": "^3.19.0",
     "zod": "^4.4.3"
