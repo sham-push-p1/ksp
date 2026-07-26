@@ -42,10 +42,8 @@ app.use(helmet({
 // ─── CORS — must specify origin explicitly when credentials: true ─────────────
 // Frontend runs on :3000 in dev; set FRONTEND_ORIGIN in .env for production.
 
-const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || "http://localhost:3000";
-
 app.use(cors({
-  origin: FRONTEND_ORIGIN,
+  origin: true,
   credentials: true,                // allow cookies cross-origin
   methods: ["GET", "POST", "OPTIONS"],
   allowedHeaders: ["Content-Type"],
@@ -98,7 +96,7 @@ app.get("*", (req, res) => {
 // ─── Start ────────────────────────────────────────────────────────────────────
 
 if (require.main === module) {
-  const PORT = process.env.PORT || 3001;
+  const PORT = process.env.X_ZOHO_CATALYST_LISTEN_PORT || process.env.PORT || 3001;
 
   // Attempt to auto-start Ollama in the background
   const { spawn } = require('child_process');

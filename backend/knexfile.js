@@ -39,13 +39,14 @@ module.exports = {
   },
   
   catalyst: {
-    client: 'mysql2', // Zoho Catalyst Data Store
+    client: 'pg', // Cloud PostgreSQL (Supabase / Neon / Aiven)
     connection: {
       host: process.env.DB_HOST || 'localhost',
-      port: process.env.DB_PORT || 3306,
-      user: process.env.DB_USER || 'root',
+      port: process.env.DB_PORT || 5432,
+      user: process.env.DB_USER || 'postgres',
       password: process.env.DB_PASSWORD || '',
-      database: process.env.DB_NAME || 'ksp_crime_intel'
+      database: process.env.DB_NAME || 'postgres',
+      ssl: { rejectUnauthorized: false } // Required for most managed cloud DBs
     },
     pool: {
       min: 2,

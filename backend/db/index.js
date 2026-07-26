@@ -5,7 +5,8 @@
 
 const bcrypt = require("bcrypt");
 const knexConfig = require("../knexfile");
-const knex = require("knex")(knexConfig[process.env.NODE_ENV || 'development']);
+const env = process.env.DB_HOST ? 'catalyst' : (process.env.NODE_ENV || 'development');
+const knex = require("knex")(knexConfig[env]);
 const logger = require("../utils/logger");
 
 async function initializeDB() {

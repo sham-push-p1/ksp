@@ -1,0 +1,23 @@
+[debug] [2026-07-26T17:36:30.416Z] : 
+[debug] [2026-07-26T17:36:30.418Z] : ----------------------------------------------------------------------
+[debug] [2026-07-26T17:36:30.418Z] : Command:      C:\nvm4w\nodejs\node.exe C:\nvm4w\nodejs\node_modules\zcatalyst-cli\lib\bin\catalyst.js deploy
+[debug] [2026-07-26T17:36:30.418Z] : CLI Version:  1.27.0
+[debug] [2026-07-26T17:36:30.418Z] : Platform:     win32
+[debug] [2026-07-26T17:36:30.418Z] : Node Version: v20.20.2
+[debug] [2026-07-26T17:36:30.418Z] : Time:         Sun Jul 26 2026 23:06:30 GMT+0530 (India Standard Time)
+[debug] [2026-07-26T17:36:30.419Z] : ----------------------------------------------------------------------
+[debug] [2026-07-26T17:36:30.419Z] : 
+[debug] [2026-07-26T17:36:32.227Z] : > authorizing via signed-in user option
+[debug] [2026-07-26T17:36:32.228Z] : > command requires scopes: ["ZohoCatalyst.projects.ALL","ZohoCatalyst.functions.ALL","ZohoCatalyst.webapp.ALL","ZohoCatalyst.appsail.Update"]
+[debug] [2026-07-26T17:36:32.391Z] : >>>> HTTP REQUEST : GET https://api.catalyst.zoho.in/baas/v1/project/52285000000018001 
+
+[debug] [2026-07-26T17:36:32.540Z] : <<<< HTTP RESPONSE : 200
+Response Headers: {"server":"ZGS","date":"Sun, 26 Jul 2026 17:36:33 GMT","content-type":"application/vnd.catalyst.v2+json","transfer-encoding":"chunked","connection":"keep-alive","x-content-type-options":"nosniff","cache-control":"private,no-cache,no-store,max-age=0,must-revalidate","pragma":"no-cache","expires":"Thu, 01 Jan 1970 00:00:00 GMT","x-frame-options":"DENY","strict-transport-security":"max-age=64072000; includeSubDomains; preload"}
+
+[debug] [2026-07-26T17:36:32.543Z] : >>>> HTTP REQUEST : GET https://api.catalyst.zoho.in/baas/v1/project/52285000000018001/environment 
+
+[debug] [2026-07-26T17:36:32.581Z] : <<<< HTTP RESPONSE : 200
+Response Headers: {"server":"ZGS","date":"Sun, 26 Jul 2026 17:36:33 GMT","content-type":"application/vnd.catalyst.v2+json","transfer-encoding":"chunked","connection":"keep-alive","x-content-type-options":"nosniff","cache-control":"private,no-cache,no-store,max-age=0,must-revalidate","pragma":"no-cache","expires":"Thu, 01 Jan 1970 00:00:00 GMT","x-frame-options":"DENY","strict-transport-security":"max-age=64072000; includeSubDomains; preload"}
+
+[debug] [2026-07-26T17:36:32.710Z] : >>>> HTTP REQUEST : POST https://api.catalyst.zoho.in/baas/v1/project/52285000000018001/webapp 
+
