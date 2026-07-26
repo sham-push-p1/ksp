@@ -1,66 +1,66 @@
 .panel {
-  padding: 24px;
+  padding: 32px 0 0 0;
 }
 
 .header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
+  margin-bottom: 24px;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 16px;
 }
 
 .title {
-  font-size: 16px;
-  color: var(--navy);
+  font-size: 18px;
+  color: var(--text);
   font-weight: 700;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   margin: 0;
 }
 
 .countBadge {
-  background: var(--red);
-  color: white;
-  padding: 3px 10px;
-  border-radius: 12px;
-  font-size: 11.5px;
-  font-weight: 700;
-  box-shadow: 0 2px 4px rgba(239, 68, 68, 0.15);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid var(--border);
 }
 
 .actions {
   display: flex;
-  gap: 10px;
+  gap: 12px;
   align-items: center;
 }
 
 .filterInput {
-  border: 1.5px solid var(--gray-200);
+  border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 6px 14px;
-  font-size: 13.5px;
+  padding: 8px 16px;
+  font-size: 13px;
   outline: none;
-  background: var(--bg);
+  background: var(--surface);
   color: var(--text);
   font-family: inherit;
-  width: 200px;
-  transition: var(--transition);
+  width: 240px;
+  transition: all 0.2s ease;
 }
 .filterInput:focus {
   border-color: var(--accent-blue);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  box-shadow: 0 0 0 3px var(--accent-blue-light);
 }
 
 .tableWrapper {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: 12px;
   overflow: auto;
-  box-shadow: var(--shadow);
-  max-height: calc(100vh - 280px);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+  max-height: calc(100vh - 300px);
 }
 
 .pagination {
@@ -75,18 +75,17 @@
 
 .pageBtn {
   background: var(--surface);
-  border: 1.5px solid var(--gray-200);
-  border-radius: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
   padding: 6px 12px;
   font-size: 14px;
   cursor: pointer;
   color: var(--text);
   font-weight: 600;
-  transition: var(--transition);
+  transition: all 0.2s ease;
 }
 .pageBtn:hover:not(:disabled) {
-  background: var(--gray-100);
-  border-color: var(--gray-400);
+  background: var(--surface-2);
 }
 .pageBtn:disabled {
   opacity: 0.5;

@@ -8,6 +8,7 @@ const express = require("express");
 const db = require("../db");
 const { authenticateToken } = require("../middleware/auth");
 const logger = require("../utils/logger");
+const { generateAnomalyAlerts } = require("../functions/anomaly");
 
 const router = express.Router();
 
@@ -71,7 +72,17 @@ router.get("/dashboard", authenticateToken, async (req, res) => {
       LIMIT 5
     `, params);
 
-    res.json({ kpis, statusBreakdown, topCrimes });
+    // Dynamic predictive anomaly generation
+    let anomalyAlerts = await generateAnomalyAlerts(where, params);
+    
+    // Fallback just in case there is not enough historical data for Z-score calculation
+    if (anomalyAlerts.length === 0) {
+      anomalyAlerts = [
+        { id: 1, type: "Info", message: "Insufficient historical data to generate reliable predictive anomaly models for this region.", severity: "low" }
+      ];
+    }
+
+    res.json({ kpis, statusBreakdown, topCrimes, anomalyAlerts });
   } catch (err) {
     logger.error("[DASHBOARD ERROR]", err.message, { userId: req.user?.userId });
     res.status(500).json({ error: err.message });

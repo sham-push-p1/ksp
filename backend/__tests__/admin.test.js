@@ -80,4 +80,57 @@ describe("Admin Routes", () => {
       expect(response.body.error).toBe("Username already exists");
     });
   });
+
+  describe("KnowledgeBase Routes", () => {
+    let testDocId = null;
+
+    it("should allow ADMIN to fetch knowledge base documents", async () => {
+      const response = await request(app)
+        .get("/api/admin/knowledge")
+        .set("Cookie", adminSessionCookie);
+        
+      expect(response.status).toBe(200);
+      expect(response.body).toHaveProperty("docs");
+      expect(Array.isArray(response.body.docs)).toBe(true);
+    });
+
+    it("should allow ADMIN to add a new knowledge base document", async () => {
+      const response = await request(app)
+        .post("/api/admin/knowledge")
+        .set("Cookie", adminSessionCookie)
+        .send({
+          title: "Test Policy Document",
+          category: "Policy",
+          content: "This is a test policy document for the RAG system."
+        });
+        
+      expect(response.status).toBe(201);
+      expect(response.body).toHaveProperty("success", true);
+      expect(response.body).toHaveProperty("id");
+      testDocId = response.body.id;
+    }, 15000); // Increased timeout for LLM embedding generation
+
+    it("should block non-ADMIN from adding knowledge base documents", async () => {
+      const response = await request(app)
+        .post("/api/admin/knowledge")
+        .set("Cookie", officerSessionCookie)
+        .send({
+          title: "Hacked Document",
+          category: "Policy",
+          content: "Should not be allowed."
+        });
+        
+      expect(response.status).toBe(403);
+    });
+
+    it("should allow ADMIN to delete a knowledge base document", async () => {
+      expect(testDocId).not.toBeNull();
+      const response = await request(app)
+        .delete(`/api/admin/knowledge/${testDocId}`)
+        .set("Cookie", adminSessionCookie);
+        
+      expect(response.status).toBe(200);
+      expect(response.body).toHaveProperty("success", true);
+    });
+  });
 });

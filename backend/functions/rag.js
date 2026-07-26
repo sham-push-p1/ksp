@@ -7,6 +7,7 @@
  */
 
 const { llmCall, getEmbedding } = require("./nl-to-zcql/ollama");
+const logger = require("../utils/logger");
 
 /**
  * Cosine similarity between two equal-length numeric arrays.
@@ -44,7 +45,7 @@ async function ensureEmbeddingsCached(db, records) {
           }
         }
       } catch (err) {
-        console.error(`[RAG] Failed to embed case ${r.CaseMasterID}:`, err);
+        logger.error(`[RAG] Failed to embed case ${r.CaseMasterID}: ${err.message}`);
       }
     } else if (typeof r.EmbeddingVec === "string") {
       try {
@@ -92,7 +93,7 @@ async function performRAG(db, question, userContext, applyRBAC, topK = 5) {
       candidates = await db.raw(`${rbac.sql} LIMIT 150`, rbac.params);
     }
   } catch (err) {
-    console.warn("[RAG] Keyword candidate retrieval failed:", err.message);
+    logger.warn(`[RAG] Keyword candidate retrieval failed: ${err.message}`);
   }
 
   // 3. Fallback: fetch a broader set if keyword results are thin
@@ -105,7 +106,7 @@ async function performRAG(db, question, userContext, applyRBAC, topK = 5) {
         if (!seen.has(f.CaseMasterID)) candidates.push(f);
       }
     } catch (err) {
-      console.warn("[RAG] Fallback retrieval failed:", err.message);
+      logger.warn(`[RAG] Fallback retrieval failed: ${err.message}`);
     }
   }
 
@@ -129,4 +130,38 @@ async function performRAG(db, question, userContext, applyRBAC, topK = 5) {
   return topMatches;
 }
 
-module.exports = { performRAG, cosineSimilarity, ensureEmbeddingsCached };
+/**
+ * Searches the KnowledgeBase table using vector embeddings.
+ * @param {object} db - Database instance
+ * @param {string} question - User question to embed
+ * @param {number} topK - Number of docs to return
+ */
+async function searchKnowledgeBase(db, question, topK = 3) {
+  try {
+    const queryEmbedding = await getEmbedding(question);
+    if (!queryEmbedding || queryEmbedding.length === 0) return [];
+
+    const docs = await db("KnowledgeBase").select("*");
+    const scoredDocs = [];
+    
+    for (const doc of docs) {
+      if (doc.EmbeddingVec) {
+        try {
+          const vec = JSON.parse(doc.EmbeddingVec);
+          const score = cosineSimilarity(queryEmbedding, vec);
+          scoredDocs.push({ ...doc, relevanceScore: score });
+        } catch (e) {
+          // Ignore malformed JSON
+        }
+      }
+    }
+    
+    scoredDocs.sort((a, b) => b.relevanceScore - a.relevanceScore);
+    return scoredDocs.slice(0, topK);
+  } catch (err) {
+    logger.error(`[RAG] searchKnowledgeBase failed: ${err.message}`);
+    return [];
+  }
+}
+
+module.exports = { performRAG, cosineSimilarity, ensureEmbeddingsCached, searchKnowledgeBase };

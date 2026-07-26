@@ -1,12 +1,12 @@
 import React from "react";
 
 const INTENT_LABELS = {
-  structured_query: "📋 Database Query",
-  narrative_search: "🔍 Narrative Search",
-  trend_analysis: "📊 Trend Analysis",
-  network_analysis: "🕸️ Network Analysis",
-  hybrid: "🔀 Hybrid",
-  predictive: "🔮 Predictive",
+  structured_query: "Database Query",
+  narrative_search: "Narrative Search",
+  trend_analysis: "Trend Analysis",
+  network_analysis: "Network Analysis",
+  hybrid: "Hybrid",
+  predictive: "Predictive",
 };
 
 function parseInlineMarkdown(text) {
@@ -104,7 +104,7 @@ function renderMarkdown(text) {
 export default function ChatMessage({ msg }) {
   if (msg.role === "system") return (
     <div className="message system">
-      <div className="system-msg"><span>ℹ️</span> {msg.content}</div>
+      <div className="system-msg"><span className="sys-icon">i</span> {msg.content}</div>
     </div>
   );
 
@@ -119,10 +119,42 @@ export default function ChatMessage({ msg }) {
 
   if (msg.role === "assistant") return (
     <div className="message assistant">
-      <div className="avatar">🛡️</div>
+      <div className="avatar">AI</div>
       <div className="bubble-wrapper">
         {msg.intent && <div className="intent-tag">{INTENT_LABELS[msg.intent] || msg.intent}</div>}
         <div className="bubble">{renderMarkdown(msg.content)}</div>
+        
+        {(msg.zcqlQuery || (msg.sources && msg.sources.length > 0)) && (
+          <details className="evidence-trail" style={{ marginTop: '12px', fontSize: '13px', color: 'var(--text-muted)' }}>
+            <summary style={{ cursor: 'pointer', outline: 'none', userSelect: 'none', fontWeight: '500', color: 'var(--navy)' }}>🧐 Why this result?</summary>
+            <div style={{ marginTop: '8px', padding: '12px', background: 'var(--bg)', borderRadius: '6px', border: '1px solid var(--border)' }}>
+              {msg.zcqlQuery && (
+                <div style={{ marginBottom: msg.sources && msg.sources.length > 0 ? '12px' : '0' }}>
+                  <strong>Database Query Executed:</strong>
+                  <pre style={{ margin: '8px 0 0 0', padding: '8px', background: 'rgba(0,0,0,0.05)', borderRadius: '4px', overflowX: 'auto', border: '1px solid var(--border)' }}>
+                    <code style={{ color: 'var(--text)', fontFamily: 'monospace' }}>{msg.zcqlQuery}</code>
+                  </pre>
+                </div>
+              )}
+              {msg.sources && msg.sources.length > 0 && (
+                <div>
+                  <strong>Knowledge Base Sources Used:</strong>
+                  <ul style={{ margin: '8px 0 0 0', paddingLeft: '20px' }}>
+                    {msg.sources.map((s, idx) => (
+                      <li key={idx} style={{ marginBottom: '4px' }}>
+                        Case {s.CrimeNo} ({s.CrimeMinorHead}) 
+                        <span style={{ marginLeft: '8px', background: 'var(--card-bg)', padding: '2px 6px', borderRadius: '4px', border: '1px solid var(--border)', fontSize: '11px' }}>
+                          Match: {s.relevanceScore}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </details>
+        )}
+
         <div className="msg-meta">
           <span className="timestamp">{msg.timestamp}</span>
           {msg.latencyMs && <span className="latency">{msg.latencyMs}ms</span>}
@@ -132,5 +164,5 @@ export default function ChatMessage({ msg }) {
     </div>
   );
 
-  return <div className="message error"><div className="error-msg">⚠️ {msg.content}</div></div>;
+  return <div className="message error"><div className="error-msg">Error: {msg.content}</div></div>;
 }

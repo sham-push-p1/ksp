@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useApp } from "../context/AppContext";
-import { DataSet, Network } from "vis-network/standalone/esm/vis-network";
 
 export default function NetworkGraph() {
   const { lastResponse: response } = useApp();
@@ -20,11 +19,14 @@ export default function NetworkGraph() {
       title: `${n.label}\nCases: ${n.CaseCount}\nType: ${n.PrimaryCrimeType}\nDistrict: ${n.PrimaryDistrict}`,
       value: n.CaseCount,
       color: {
-        background: n.CaseCount > 3 ? "#e63946" : n.CaseCount > 1 ? "#f4a261" : "#a8d8ea",
-        border: "#1a1a2e",
+        background: n.CaseCount > 3 ? "#ef4444" : n.CaseCount > 1 ? "#f59e0b" : "#3b82f6",
+        border: "#0f172a",
+        highlight: { background: "#ffffff", border: "#3b82f6" },
+        hover: { background: "#ffffff", border: "#ef4444" }
       },
-      font:  { size: 11, color: "#1a1a2e" },
+      font:  { size: 12, color: "#1e293b", face: "Inter", strokeWidth: 2, strokeColor: "#ffffff" },
       shape: "dot",
+      scaling: { min: 10, max: 30 }
     })));
 
     // Build edges efficiently using a district+crime group index (O(n) instead of O(n²)).

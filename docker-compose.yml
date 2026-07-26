@@ -1,26 +1,55 @@
 version: '3.8'
 
 services:
-  ksp-app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: ksp_crime_ai
-    restart: unless-stopped
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: ${DB_USER:-ksp_admin}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME:-ksp_crime_intel}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-ksp_admin} -d ${DB_NAME:-ksp_crime_intel}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
     ports:
       - "3001:3001"
-    volumes:
-      - ksp_data:/app/data
     environment:
       - NODE_ENV=production
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_USER=${DB_USER:-ksp_admin}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME:-ksp_crime_intel}
       - PORT=3001
-      - DB_PATH=/app/data/database.sqlite
-      # Ollama host configuration (assuming Ollama is running on the host machine)
-      # Use host.docker.internal for Mac/Windows, or the host's IP for Linux
+      - FRONTEND_ORIGIN=${FRONTEND_ORIGIN:-https://ksp-intel.karnataka.gov.in}
+      # Ollama: connects to host machine's Ollama instance
+      # Ensure 'ollama serve' is running and models are pulled BEFORE docker-compose up
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
-      # Adjust if your production server runs on a different port/domain
-      - FRONTEND_ORIGIN=http://localhost:3001
+    depends_on:
+      db:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - REACT_APP_API_URL=/api
+    depends_on:
+      - backend
+    restart: unless-stopped
 
 volumes:
-  ksp_data:
-    name: ksp_persistent_data
+  pgdata:

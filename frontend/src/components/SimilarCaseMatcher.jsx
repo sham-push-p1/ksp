@@ -81,6 +81,17 @@ export default function SimilarCaseMatcher() {
             </div>
           )}
 
+          {result.investigativeLeads && (
+            <div style={{ marginBottom: "24px", padding: "16px", background: "rgba(42,157,143,0.05)", borderRadius: "8px", border: "1px solid rgba(42,157,143,0.3)" }}>
+              <h4 style={{ margin: "0 0 12px 0", color: "#2a9d8f", display: "flex", alignItems: "center", gap: "8px" }}>
+                <span>🧠</span> AI Investigative Leads
+              </h4>
+              <div style={{ margin: 0, fontSize: "14px", lineHeight: "1.6", whiteSpace: "pre-wrap" }}>
+                {result.investigativeLeads}
+              </div>
+            </div>
+          )}
+
           <h4 style={{ margin: "0 0 16px 0" }}>Top Semantic Matches</h4>
           
           {result.matches.length === 0 ? (

@@ -1,0 +1,26 @@
+{
+  "name": "KSP Crime Intelligence",
+  "short_name": "KSP SCRB",
+  "description": "Karnataka State Police — SCRB Conversational Crime Analytics Platform",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "orientation": "landscape-primary",
+  "icons": [
+    {
+      "src": "/ksp_emblem.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/ksp_emblem.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["government", "productivity"],
+  "lang": "en-IN"
+}

@@ -76,6 +76,16 @@ app.use("/api", mapRoutes);
 app.use("/api", matcherRoutes);
 app.use("/api/admin", adminRoutes);
 
+// ─── Global Error Handler ────────────────────────────────────────────────────────
+app.use((err, req, res, next) => {
+  logger.error("[GLOBAL ERROR]", err.stack || err.message);
+  res.status(err.status || 500).json({
+    error: "Internal Server Error. Please contact support.",
+    // Mask detailed errors in production, but let them through in test for diagnostics
+    details: process.env.NODE_ENV === "test" ? err.message : undefined
+  });
+});
+
 // ─── Static Frontend (Production) ─────────────────────────────────────────────
 const path = require("path");
 app.use(express.static(path.join(__dirname, "public")));
@@ -89,11 +99,22 @@ app.get("*", (req, res) => {
 
 if (require.main === module) {
   const PORT = process.env.PORT || 3001;
+
+  // Attempt to auto-start Ollama in the background
+  const { spawn } = require('child_process');
+  const ollamaProcess = spawn('ollama', ['serve'], { 
+    detached: true, 
+    stdio: 'ignore', 
+    shell: true 
+  });
+  ollamaProcess.on('error', () => { /* ignore */ });
+  ollamaProcess.unref(); // allow the node process to exit independently
+
   app.listen(PORT, () => logger.info(`
 \x1b[36m🚔 KSP Crime Intelligence — Local Dev Server\x1b[0m
   API:      http://localhost:${PORT}/api/chat
   Audit:    http://localhost:${PORT}/api/audit-log
-  Ollama:   http://localhost:11434
+  Ollama:   http://localhost:11434 (Auto-starting...)
   Frontend: ${FRONTEND_ORIGIN}
 `));
 }

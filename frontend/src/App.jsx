@@ -1,7 +1,9 @@
 import React, { useState, useRef, useEffect, useCallback, Suspense, lazy } from "react";
+import html2pdf from "html2pdf.js";
 import { api } from "./utils/api";
 import ChatMessage from "./components/ChatMessage";
 import LoginPanel from "./components/LoginPanel";
+import LandingPage from "./components/LandingPage";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { useToast } from "./components/Toast";
 import { useApp } from "./context/AppContext";
@@ -40,6 +42,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [lang, setLang] = useState("en");
   const [isListening, setIsListening] = useState(false);
+  const [showLogin, setShowLogin] = useState(false);
   
   const chatEndRef = useRef(null);
   const recRef = useRef(null);
@@ -113,7 +116,6 @@ export default function App() {
       setMessages(prev => [...prev, { role:"error", content:`Error: ${err.message}`, timestamp:new Date().toLocaleTimeString() }]);
       toast.error("Query Failed", err.message);
     } finally { setLoading(false); }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [input, loading, lang, messages]);
 
   const handleExportPDF = async () => {
@@ -130,25 +132,36 @@ export default function App() {
     try {
       const res = await api.exportPDF(conversation);
       if (res.html) {
-        // Download as a self-contained HTML file — avoids popup blockers and
-        // lets the officer open it in any browser and use Ctrl+P to print/save as PDF.
-        const blob = new Blob([res.html], { type: "text/html" });
-        const url  = URL.createObjectURL(blob);
-        const a    = document.createElement("a");
-        a.href     = url;
-        a.download = `KSP_Report_${new Date().toISOString().slice(0,10)}.html`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        toast.success("Report Downloaded", `${conversation.length} query/queries saved. Open the .html file and press Ctrl+P to print/save as PDF.`);
+        toast.info("Generating PDF", "Please wait while your PDF is being generated...");
+        
+        // Create a temporary container
+        const tempDiv = document.createElement("div");
+        tempDiv.innerHTML = res.html;
+        document.body.appendChild(tempDiv);
+        
+        // Configure html2pdf
+        const opt = {
+          margin:       0.5,
+          filename:     `KSP_Report_${new Date().toISOString().slice(0,10)}.pdf`,
+          image:        { type: 'jpeg', quality: 0.98 },
+          html2canvas:  { scale: 2 },
+          jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' }
+        };
+        
+        // Generate and download
+        await html2pdf().set(opt).from(tempDiv).save();
+        
+        // Cleanup
+        document.body.removeChild(tempDiv);
+        toast.success("PDF Downloaded", `${conversation.length} query/queries saved to PDF.`);
       }
     } catch (err) {
       toast.error("Export Failed", err.message);
     }
   };
 
-  if (!user) return <LoginPanel onLogin={handleLogin}/>;
+  if (!user && showLogin) return <LoginPanel onLogin={handleLogin} onBack={() => setShowLogin(false)} />;
+  if (!user) return <LandingPage onTryDemo={() => setShowLogin(true)} />;
 
   return (
     <div className="app">
@@ -181,12 +194,12 @@ export default function App() {
       <nav className="tab-nav">
         {["dashboard","chat","results","chart","network","map","analysis","matcher"].map(tab=>(
           <button key={tab} className={`tab-btn ${activeTab===tab?"active":""}`} onClick={()=>setActiveTab(tab)}>
-            {tab==="dashboard"&&"🏠 Dashboard"}{tab==="chat"&&"💬 Chat"}{tab==="results"&&`📋 Results${lastResponse?.resultCount>0?` (${lastResponse.resultCount})`:""}`}{tab==="chart"&&"📊 Trends"}{tab==="network"&&"🕸️ Network"}{tab==="map"&&"🗺️ Map"}{tab==="analysis"&&"🎯 Analysis"}{tab==="matcher"&&"🔍 Matcher"}
+            {tab==="dashboard"&&"Dashboard"}{tab==="chat"&&"Chat"}{tab==="results"&&`Results${lastResponse?.resultCount>0?` (${lastResponse.resultCount})`:""}`}{tab==="chart"&&"Trends"}{tab==="network"&&"Network"}{tab==="map"&&"Map"}{tab==="analysis"&&"Analysis"}{tab==="matcher"&&"Matcher"}
           </button>
         ))}
         {user?.role === "ADMIN" && (
           <button className={`tab-btn ${activeTab==="admin"?"active":""}`} onClick={()=>setActiveTab("admin")}>
-            ⚙️ Admin
+            Admin
           </button>
         )}
       </nav>
@@ -195,7 +208,7 @@ export default function App() {
         <div className="chat-panel">
           <div className="messages">
             {messages.map((msg,i)=><ChatMessage key={i} msg={msg}/>)}
-            {loading && <div className="message assistant"><div className="avatar">🚔</div><div className="bubble-wrapper"><div className="bubble loading-bubble"><span className="dot"/><span className="dot"/><span className="dot"/></div></div></div>}
+            {loading && <div className="message assistant"><div className="avatar">AI</div><div className="bubble-wrapper"><div className="bubble loading-bubble"><span className="dot"/><span className="dot"/><span className="dot"/></div></div></div>}
             <div ref={chatEndRef}/>
           </div>
           {messages.length<=1&&(
@@ -207,7 +220,7 @@ export default function App() {
             </div>
           )}
           <div className="input-bar">
-            <button className={`voice-btn ${isListening?"listening":""}`} onClick={()=>{if(isListening){recRef.current?.stop();setIsListening(false);}else{recRef.current?.start();setIsListening(true);}}} title="Voice input">🎤</button>
+            <button className={`voice-btn ${isListening?"listening":""}`} onClick={()=>{if(isListening){recRef.current?.stop();setIsListening(false);}else{recRef.current?.start();setIsListening(true);}}} title="Voice input">Voice</button>
             {isListening ? (
               <div className="voice-wave-container">
                 <span className="voice-wave-bar bar-1"/>
@@ -253,22 +266,22 @@ export default function App() {
               </div>
               <div className="welcome-grid">
                 <div className="welcome-card">
-                  <span className="card-badge-icon">💬</span>
+                  <span className="card-badge-icon">Q</span>
                   <h4>Conversational Crime Analytics</h4>
                   <p>Query using natural language in English or Kannada to instantly extract statistics, specific case details, and trends.</p>
                 </div>
                 <div className="welcome-card">
-                  <span className="card-badge-icon">📊</span>
+                  <span className="card-badge-icon">T</span>
                   <h4>Automated Visual Trends</h4>
                   <p>Visualize hotspots, district rank charts, and monthly crime breakdowns instantly in dynamic graphs.</p>
                 </div>
                 <div className="welcome-card">
-                  <span className="card-badge-icon">🕸️</span>
+                  <span className="card-badge-icon">N</span>
                   <h4>Offender Network Graphs</h4>
                   <p>Analyze links between accomplice networks, recidivism rates, and geographical repeat offenders.</p>
                 </div>
                 <div className="welcome-card">
-                  <span className="card-badge-icon">🎯</span>
+                  <span className="card-badge-icon">A</span>
                   <h4>Socio-Behavioral Analytics</h4>
                   <p>Examine crime distributions based on victim vulnerability, complainant occupations, and modus operandi factors.</p>
                 </div>

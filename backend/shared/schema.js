@@ -10,13 +10,18 @@ const FLAT_TABLE_SCHEMA = {
     "AccusedMasterID","CaseMasterID","CrimeNo","AccusedName","AgeYear","Gender",
     "PersonID","ArrestDate","ArrestDistrict","ArrestState","ArrestingOfficerName",
     "ArrestingOfficerRank","ProducedInCourt","CrimeMajorHead","CrimeMinorHead",
-    "PoliceStationName","DistrictName",
+    "PoliceStationName","DistrictName","Education","Employment","RiskScore"
   ],
   VictimSummaryFlat: [
     "VictimMasterID","CaseMasterID","CrimeNo","VictimName","AgeYear","Gender",
     "IsPoliceVictim","CrimeMajorHead","CrimeMinorHead","PoliceStationName",
     "DistrictName","IncidentFromDate",
   ],
+  FinancialTransactionsFlat: [
+    "TransactionID", "AccusedMasterID", "CaseMasterID", "CrimeNo",
+    "SenderAccount", "ReceiverAccount", "Amount", "TransactionDate",
+    "SuspiciousFlag", "Remarks", "PoliceStationName", "DistrictName"
+  ]
 };
 
 const RBAC = {

@@ -1,252 +1,326 @@
 /**
  * db/index.js — Database initialization, seeding, migrations, and session cleanup.
- * Exports the configured better-sqlite3 Database instance for use across routes.
+ * Exports the configured Knex instance for use across routes.
  */
 
-const Database = require("better-sqlite3");
-const bcrypt   = require("bcrypt");
+const bcrypt = require("bcrypt");
 const knexConfig = require("../knexfile");
 const knex = require("knex")(knexConfig[process.env.NODE_ENV || 'development']);
+const logger = require("../utils/logger");
 
-const sqliteDb = new Database("./local-dev.db");
+async function initializeDB() {
+  try {
+    // ─── Table Creation (Dialect Agnostic) ───────────────────────────────────
+    
+    if (!await knex.schema.hasTable('SystemUsers')) {
+      await knex.schema.createTable('SystemUsers', t => {
+        t.string('UserID').primary();
+        t.string('Username').unique();
+        t.string('PasswordHash');
+        t.string('Role');
+        t.string('Name');
+        t.string('DistrictName').nullable();
+        t.string('StationName').nullable();
+      });
+    }
 
-// ─── Table Creation ──────────────────────────────────────────────────────────
+    if (!await knex.schema.hasTable('KnowledgeBase')) {
+      await knex.schema.createTable('KnowledgeBase', t => {
+        t.increments('ID').primary(); // serial in PG, autoincrement in SQLite
+        t.text('Title');
+        t.text('Content');
+        t.text('EmbeddingVec');
+        t.string('CreatedAt');
+      });
+    }
 
-sqliteDb.exec(`
-  CREATE TABLE IF NOT EXISTS SystemUsers (
-    UserID TEXT PRIMARY KEY,
-    Username TEXT UNIQUE,
-    PasswordHash TEXT,
-    Role TEXT,
-    Name TEXT,
-    DistrictName TEXT,
-    StationName TEXT
-  );
-  CREATE TABLE IF NOT EXISTS UserSessions (
-    Token TEXT PRIMARY KEY,
-    UserID TEXT,
-    Username TEXT,
-    Role TEXT,
-    Name TEXT,
-    DistrictName TEXT,
-    StationName TEXT,
-    CreatedAt TEXT,
-    ExpiresAt TEXT
-  );
-`);
+    if (!await knex.schema.hasTable('UserSessions')) {
+      await knex.schema.createTable('UserSessions', t => {
+        t.string('Token').primary();
+        t.string('UserID');
+        t.string('Username');
+        t.string('Role');
+        t.string('Name');
+        t.string('DistrictName').nullable();
+        t.string('StationName').nullable();
+        t.string('CreatedAt');
+        t.string('ExpiresAt').nullable();
+      });
+    } else {
+      // Migration: Add ExpiresAt if missing
+      const hasExpiresAt = await knex.schema.hasColumn('UserSessions', 'ExpiresAt');
+      if (!hasExpiresAt) {
+        await knex.schema.alterTable('UserSessions', t => {
+          t.string('ExpiresAt').nullable();
+        });
+        logger.info("[DB MIGRATION] Added ExpiresAt column to UserSessions.");
+      }
+    }
 
-sqliteDb.exec(`
-  CREATE TABLE IF NOT EXISTS CaseSummaryFlat (
-    CaseMasterID INTEGER, CrimeNo TEXT, CaseNo TEXT,
-    CrimeRegisteredDate TEXT, IncidentFromDate TEXT, IncidentToDate TEXT,
-    Latitude REAL, Longitude REAL, BriefFacts TEXT,
-    CaseCategoryName TEXT, GravityOffence TEXT,
-    CrimeMajorHead TEXT, CrimeMinorHead TEXT, CaseStatus TEXT,
-    PoliceStationName TEXT, DistrictName TEXT, StateName TEXT,
-    RegisteringOfficerName TEXT, RegisteringOfficerRank TEXT,
-    CourtName TEXT, EmbeddingVec TEXT
-  );
-  CREATE TABLE IF NOT EXISTS AccusedSummaryFlat (
-    AccusedMasterID INTEGER, CaseMasterID INTEGER, CrimeNo TEXT,
-    AccusedName TEXT, AgeYear INTEGER, Gender TEXT, PersonID TEXT,
-    ArrestDate TEXT, ArrestDistrict TEXT, ArrestState TEXT,
-    ArrestingOfficerName TEXT, ArrestingOfficerRank TEXT,
-    ProducedInCourt TEXT, CrimeMajorHead TEXT, CrimeMinorHead TEXT,
-    PoliceStationName TEXT, DistrictName TEXT
-  );
-  CREATE TABLE IF NOT EXISTS VictimSummaryFlat (
-    VictimMasterID INTEGER, CaseMasterID INTEGER, CrimeNo TEXT,
-    VictimName TEXT, AgeYear INTEGER, Gender TEXT, IsPoliceVictim INTEGER,
-    CrimeMajorHead TEXT, CrimeMinorHead TEXT,
-    PoliceStationName TEXT, DistrictName TEXT, IncidentFromDate TEXT
-  );
-  CREATE TABLE IF NOT EXISTS ComplainantSummaryFlat (
-    ComplainantID INTEGER, CaseMasterID INTEGER, CrimeNo TEXT,
-    ComplainantName TEXT, AgeYear INTEGER, Gender TEXT,
-    Occupation TEXT, Religion TEXT, Caste TEXT,
-    CrimeMajorHead TEXT, CrimeMinorHead TEXT,
-    PoliceStationName TEXT, DistrictName TEXT
-  );
-  CREATE TABLE IF NOT EXISTS QueryAuditLog (
-    ID INTEGER PRIMARY KEY AUTOINCREMENT,
-    UserID TEXT, UserRole TEXT, SessionID TEXT,
-    Question TEXT, Intent TEXT, GeneratedQuery TEXT,
-    ResultCount INTEGER, LatencyMs INTEGER, Timestamp TEXT, Status TEXT
-  );
-`);
+    if (!await knex.schema.hasTable('CaseSummaryFlat')) {
+      await knex.schema.createTable('CaseSummaryFlat', t => {
+        t.integer('CaseMasterID'); t.string('CrimeNo'); t.string('CaseNo');
+        t.string('CrimeRegisteredDate'); t.string('IncidentFromDate'); t.string('IncidentToDate');
+        t.float('Latitude'); t.float('Longitude'); t.text('BriefFacts');
+        t.string('CaseCategoryName'); t.string('GravityOffence');
+        t.string('CrimeMajorHead'); t.string('CrimeMinorHead'); t.string('CaseStatus');
+        t.string('PoliceStationName'); t.string('DistrictName'); t.string('StateName');
+        t.string('RegisteringOfficerName'); t.string('RegisteringOfficerRank');
+        t.string('CourtName'); t.text('EmbeddingVec').nullable();
+      });
+    }
 
-// ─── Migrations ──────────────────────────────────────────────────────────────
+    if (!await knex.schema.hasTable('AccusedSummaryFlat')) {
+      await knex.schema.createTable('AccusedSummaryFlat', t => {
+        t.integer('AccusedMasterID'); t.integer('CaseMasterID'); t.string('CrimeNo');
+        t.string('AccusedName'); t.integer('AgeYear'); t.string('Gender'); t.string('PersonID');
+        t.string('ArrestDate'); t.string('ArrestDistrict'); t.string('ArrestState');
+        t.string('ArrestingOfficerName'); t.string('ArrestingOfficerRank');
+        t.string('ProducedInCourt'); t.string('CrimeMajorHead'); t.string('CrimeMinorHead');
+        t.string('PoliceStationName'); t.string('DistrictName'); t.string('Education'); 
+        t.string('Employment'); t.string('RiskScore');
+      });
+    }
 
-try {
-  const cols = sqliteDb.prepare("PRAGMA table_info(UserSessions)").all().map(c => c.name);
-  if (!cols.includes("ExpiresAt")) {
-    sqliteDb.exec("ALTER TABLE UserSessions ADD COLUMN ExpiresAt TEXT");
-    console.log("[DB MIGRATION] Added ExpiresAt column to UserSessions.");
-  }
-} catch (err) {
-  console.warn("[DB MIGRATION WARNING]", err.message);
-}
+    if (!await knex.schema.hasTable('VictimSummaryFlat')) {
+      await knex.schema.createTable('VictimSummaryFlat', t => {
+        t.integer('VictimMasterID'); t.integer('CaseMasterID'); t.string('CrimeNo');
+        t.string('VictimName'); t.integer('AgeYear'); t.string('Gender'); t.integer('IsPoliceVictim');
+        t.string('CrimeMajorHead'); t.string('CrimeMinorHead');
+        t.string('PoliceStationName'); t.string('DistrictName'); t.string('IncidentFromDate');
+      });
+    }
 
-// ─── Seed SystemUsers ────────────────────────────────────────────────────────
+    if (!await knex.schema.hasTable('ComplainantSummaryFlat')) {
+      await knex.schema.createTable('ComplainantSummaryFlat', t => {
+        t.integer('ComplainantID'); t.integer('CaseMasterID'); t.string('CrimeNo');
+        t.string('ComplainantName'); t.integer('AgeYear'); t.string('Gender');
+        t.string('Occupation'); t.string('Religion'); t.string('Caste');
+        t.string('CrimeMajorHead'); t.string('CrimeMinorHead');
+        t.string('PoliceStationName'); t.string('DistrictName');
+      });
+    }
 
-const systemUserCount = sqliteDb.prepare("SELECT COUNT(*) AS count FROM SystemUsers").get().count;
-if (systemUserCount === 0) {
-  console.log("[DB] Seeding SystemUsers with bcrypt hashes (cost=12)...");
-  const demoUsers = {
-    admin:     { userId:"EMP001", role:"scrb_analyst", name:"SCRB Analyst",         districtName:null,              stationName:null, password:"admin" },
-    sp_blr:   { userId:"EMP002", role:"sp",           name:"SP Bengaluru Urban",    districtName:"Bengaluru Urban", stationName:null, password:"sp_blr" },
-    insp_wf:  { userId:"EMP003", role:"inspector",    name:"Inspector Whitefield",  districtName:"Bengaluru Urban", stationName:"Whitefield", password:"insp_wf" },
-    constable:{ userId:"EMP004", role:"constable",    name:"Constable Sharma",      districtName:"Bengaluru Urban", stationName:"Cubbon Park", password:"constable" },
-  };
-  const insertUser = sqliteDb.prepare(`
-    INSERT INTO SystemUsers (UserID, Username, PasswordHash, Role, Name, DistrictName, StationName)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `);
-  for (const [username, u] of Object.entries(demoUsers)) {
-    const hash = bcrypt.hashSync(u.password, 12);
-    insertUser.run(u.userId, username, hash, u.role, u.name, u.districtName, u.stationName);
-  }
-  console.log("[DB] SystemUsers seeded successfully with bcrypt.");
-}
+    if (!await knex.schema.hasTable('QueryAuditLog')) {
+      await knex.schema.createTable('QueryAuditLog', t => {
+        t.increments('ID').primary();
+        t.string('UserID'); t.string('UserRole'); t.string('SessionID');
+        t.text('Question'); t.string('Intent'); t.text('GeneratedQuery');
+        t.integer('ResultCount'); t.integer('LatencyMs'); t.string('Timestamp'); t.string('Status');
+      });
+    }
 
-// ─── Migrate legacy SHA-256 password hashes to bcrypt ───────────────────────
+    if (!await knex.schema.hasTable('FinancialTransactionsFlat')) {
+      await knex.schema.createTable('FinancialTransactionsFlat', t => {
+        t.increments('TransactionID').primary();
+        t.integer('AccusedMasterID');
+        t.integer('CaseMasterID');
+        t.string('CrimeNo');
+        t.string('SenderAccount');
+        t.string('ReceiverAccount');
+        t.float('Amount');
+        t.string('TransactionDate');
+        t.integer('SuspiciousFlag');
+        t.text('Remarks');
+        t.string('PoliceStationName');
+        t.string('DistrictName');
+      });
+    }
 
-try {
-  const users = sqliteDb.prepare("SELECT UserID, Username, PasswordHash FROM SystemUsers").all();
-  const legacyPasswords = { admin:"admin", sp_blr:"sp_blr", insp_wf:"insp_wf", constable:"constable" };
-  const updateHash = sqliteDb.prepare("UPDATE SystemUsers SET PasswordHash = ? WHERE UserID = ?");
-  let migrated = 0;
-  for (const u of users) {
-    if (!u.PasswordHash.startsWith("$2b$")) {
-      const plaintext = legacyPasswords[u.Username];
-      if (plaintext) {
-        updateHash.run(bcrypt.hashSync(plaintext, 12), u.UserID);
+    // ─── Seed SystemUsers ────────────────────────────────────────────────────────
+    
+    const { count: systemUserCount } = await knex('SystemUsers').count('* as count').first();
+    if (Number(systemUserCount) === 0) {
+      logger.info("[DB] Seeding SystemUsers with bcrypt hashes (cost=12)...");
+      const demoUsers = [
+        { UserID: "EMP001", Role: "scrb_analyst", Name: "SCRB Analyst", DistrictName: null, StationName: null, Username: "admin", PasswordHash: bcrypt.hashSync("Ksp@Scrb#2025!Adm", 12) },
+        { UserID: "EMP002", Role: "sp", Name: "SP Bengaluru Urban", DistrictName: "Bengaluru Urban", StationName: null, Username: "sp_blr", PasswordHash: bcrypt.hashSync("Ksp@Sp#Blr2025!", 12) },
+        { UserID: "EMP003", Role: "inspector", Name: "Inspector Whitefield", DistrictName: "Bengaluru Urban", StationName: "Whitefield", Username: "insp_wf", PasswordHash: bcrypt.hashSync("Ksp@Insp#Wf2025!", 12) },
+        { UserID: "EMP004", Role: "constable", Name: "Constable Sharma", DistrictName: "Bengaluru Urban", StationName: "Cubbon Park", Username: "constable", PasswordHash: bcrypt.hashSync("Ksp@Const#2025!", 12) },
+      ];
+      await knex('SystemUsers').insert(demoUsers);
+      logger.info("[DB] SystemUsers seeded successfully with bcrypt.");
+    }
+
+    // Migrate old SHA-256 hashes to bcrypt if they exist
+    const legacyUsers = await knex('SystemUsers').select('UserID', 'Username', 'PasswordHash');
+    const legacyPasswords = { admin:"Ksp@Scrb#2025!Adm", sp_blr:"Ksp@Sp#Blr2025!", insp_wf:"Ksp@Insp#Wf2025!", constable:"Ksp@Const#2025!" };
+    let migrated = 0;
+    for (const u of legacyUsers) {
+      if (!u.PasswordHash.startsWith("$2b$") && legacyPasswords[u.Username]) {
+        await knex('SystemUsers').where({ UserID: u.UserID }).update({ PasswordHash: bcrypt.hashSync(legacyPasswords[u.Username], 12) });
         migrated++;
       }
     }
-  }
-  if (migrated > 0) console.log(`[DB MIGRATION] Re-hashed ${migrated} user password(s) to bcrypt.`);
-} catch (err) {
-  console.warn("[DB MIGRATION bcrypt WARNING]", err.message);
-}
+    if (migrated > 0) logger.info(`[DB MIGRATION] Re-hashed ${migrated} user password(s) to bcrypt.`);
 
-// ─── Seed flat tables from seeds/seed-data.json ──────────────────────────────
+    // ─── Seed flat tables from seeds/seed-data.json ──────────────────────────────
+    
+    const { count: countC } = await knex('CaseSummaryFlat').count('* as count').first();
+    const { count: countA } = await knex('AccusedSummaryFlat').count('* as count').first();
+    const { count: countV } = await knex('VictimSummaryFlat').count('* as count').first();
+    const { count: countCP } = await knex('ComplainantSummaryFlat').count('* as count').first();
 
-function loadSeedData() {
-  let countC = 0, countA = 0, countV = 0, countCP = 0;
-  try { countC  = sqliteDb.prepare("SELECT COUNT(*) AS c FROM CaseSummaryFlat").get().c; } catch {}
-  try { countA  = sqliteDb.prepare("SELECT COUNT(*) AS c FROM AccusedSummaryFlat").get().c; } catch {}
-  try { countV  = sqliteDb.prepare("SELECT COUNT(*) AS c FROM VictimSummaryFlat").get().c; } catch {}
-  try { countCP = sqliteDb.prepare("SELECT COUNT(*) AS c FROM ComplainantSummaryFlat").get().c; } catch {}
-
-  if (countC > 0 && countA > 0 && countV > 0 && countCP > 0) {
-    console.log(`[DB] All flat tables loaded (${countC} cases, ${countA} accused, ${countV} victims, ${countCP} complainants)`);
-    return;
-  }
-
-  try {
-    const d = require("../seeds/seed-data.json");
-    const chMap  = Object.fromEntries(d.CrimeHead.map(r=>[r.CrimeHeadID, r.CrimeGroupName]));
-    const cshMap = Object.fromEntries(d.CrimeSubHead.map(r=>[r.CrimeSubHeadID, r.CrimeHeadName]));
-    const catMap = Object.fromEntries(d.CaseCategory.map(r=>[r.CaseCategoryID, r.LookupValue]));
-    const gravMap= Object.fromEntries(d.GravityOffence.map(r=>[r.GravityOffenceID, r.LookupValue]));
-    const stMap  = Object.fromEntries(d.CaseStatusMaster.map(r=>[r.CaseStatusID, r.CaseStatusName]));
-    const unitMap= Object.fromEntries(d.Unit.map(r=>[r.UnitID, r]));
-    const distMap= Object.fromEntries(d.District.map(r=>[r.DistrictID, r]));
-    const empMap = Object.fromEntries(d.Employee.map(r=>[r.EmployeeID, r]));
-    const rankMap= Object.fromEntries(d.Rank.map(r=>[r.RankID, r]));
-    const crtMap = Object.fromEntries(d.Court.map(r=>[r.CourtID, r]));
-    const arMap  = Object.fromEntries(d.ArrestSurrender.map(r=>[r.AccusedMasterID, r]));
-    const occMap = Object.fromEntries(d.OccupationMaster.map(r=>[r.OccupationID, r.OccupationName]));
-    const relMap = Object.fromEntries(d.ReligionMaster.map(r=>[r.ReligionID, r.ReligionName]));
-    const cstMap = Object.fromEntries(d.CasteMaster.map(r=>[r.caste_master_id, r.caste_master_name]));
-    const caseIdx= Object.fromEntries(d.CaseMaster.map(r=>[r.CaseMasterID, r]));
-
-    if (countC === 0) {
-      console.log("[DB] Seeding CaseSummaryFlat...");
-      const insC = sqliteDb.prepare(`INSERT INTO CaseSummaryFlat VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL)`);
-      sqliteDb.transaction(rows => {
-        for (const c of rows) {
-          const unit=unitMap[c.PoliceStationID]||{}, dist=distMap[unit.DistrictID]||{};
-          const emp=empMap[c.PolicePersonID]||{}, rank=rankMap[emp.RankID]||{};
-          const court=crtMap[c.CourtID]||{};
-          insC.run(c.CaseMasterID,c.CrimeNo,c.CaseNo,c.CrimeRegisteredDate,
-            c.IncidentFromDate,c.IncidentToDate,c.latitude,c.longitude,c.BriefFacts||"",
-            catMap[c.CaseCategoryID]||"FIR",gravMap[c.GravityOffenceID]||"",
-            chMap[c.CrimeMajorHeadID]||"",cshMap[c.CrimeMinorHeadID]||"",
-            stMap[c.CaseStatusID]||"",unit.UnitName||"",dist.DistrictName||"","Karnataka",
-            emp.FirstName||"",rank.RankName||"",court.CourtName||"");
-        }
-      })(d.CaseMaster);
+    if (Number(countC) > 0 && Number(countA) > 0 && Number(countV) > 0 && Number(countCP) > 0) {
+      logger.info(`[DB] All flat tables loaded (${countC} cases, ${countA} accused, ${countV} victims, ${countCP} complainants)`);
+      return;
     }
 
-    if (countA === 0) {
-      console.log("[DB] Seeding AccusedSummaryFlat...");
-      const insA = sqliteDb.prepare(`INSERT INTO AccusedSummaryFlat VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
-      sqliteDb.transaction(rows => {
-        for (const a of rows) {
-          const ar=arMap[a.AccusedMasterID]||{}, aDist=distMap[ar.ArrestSurrenderDistrictId]||{};
-          const io=empMap[ar.IOID]||{}, ioRank=rankMap[io.RankID]||{};
-          const court=crtMap[ar.CourtID]||{};
-          const c=caseIdx[a.CaseMasterID]||{}, unit=unitMap[c.PoliceStationID]||{}, dist=distMap[unit.DistrictID]||{};
-          insA.run(a.AccusedMasterID,a.CaseMasterID,c.CrimeNo||"",
-            a.AccusedName,a.AgeYear,a.GenderID===1?"Male":a.GenderID===2?"Female":"Transgender",
-            a.PersonID,ar.ArrestSurrenderDate||"",aDist.DistrictName||"","Karnataka",
-            io.FirstName||"",ioRank.RankName||"",court.CourtName||"",
-            chMap[c.CrimeMajorHeadID]||"",cshMap[c.CrimeMinorHeadID]||"",
-            unit.UnitName||"",dist.DistrictName||"");
-        }
-      })(d.Accused);
-    }
+    try {
+      const d = require("../seeds/seed-data.json");
+      const chMap  = Object.fromEntries(d.CrimeHead.map(r=>[r.CrimeHeadID, r.CrimeGroupName]));
+      const cshMap = Object.fromEntries(d.CrimeSubHead.map(r=>[r.CrimeSubHeadID, r.CrimeHeadName]));
+      const catMap = Object.fromEntries(d.CaseCategory.map(r=>[r.CaseCategoryID, r.LookupValue]));
+      const gravMap= Object.fromEntries(d.GravityOffence.map(r=>[r.GravityOffenceID, r.LookupValue]));
+      const stMap  = Object.fromEntries(d.CaseStatusMaster.map(r=>[r.CaseStatusID, r.CaseStatusName]));
+      const unitMap= Object.fromEntries(d.Unit.map(r=>[r.UnitID, r]));
+      const distMap= Object.fromEntries(d.District.map(r=>[r.DistrictID, r]));
+      const empMap = Object.fromEntries(d.Employee.map(r=>[r.EmployeeID, r]));
+      const rankMap= Object.fromEntries(d.Rank.map(r=>[r.RankID, r]));
+      const crtMap = Object.fromEntries(d.Court.map(r=>[r.CourtID, r]));
+      const arMap  = Object.fromEntries(d.ArrestSurrender.map(r=>[r.AccusedMasterID, r]));
+      const occMap = Object.fromEntries(d.OccupationMaster.map(r=>[r.OccupationID, r.OccupationName]));
+      const relMap = Object.fromEntries(d.ReligionMaster.map(r=>[r.ReligionID, r.ReligionName]));
+      const cstMap = Object.fromEntries(d.CasteMaster.map(r=>[r.caste_master_id, r.caste_master_name]));
+      const caseIdx= Object.fromEntries(d.CaseMaster.map(r=>[r.CaseMasterID, r]));
 
-    if (countV === 0) {
-      console.log("[DB] Seeding VictimSummaryFlat...");
-      const insV = sqliteDb.prepare(`INSERT INTO VictimSummaryFlat VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`);
-      sqliteDb.transaction(rows => {
-        for (const v of rows) {
-          const c=caseIdx[v.CaseMasterID]||{}, unit=unitMap[c.PoliceStationID]||{}, dist=distMap[unit.DistrictID]||{};
-          insV.run(v.VictimMasterID,v.CaseMasterID,c.CrimeNo||"",
-            v.VictimName,v.AgeYear,v.GenderID===1?"Male":"Female",v.VictimPolice||0,
-            chMap[c.CrimeMajorHeadID]||"",cshMap[c.CrimeMinorHeadID]||"",
-            unit.UnitName||"",dist.DistrictName||"",c.IncidentFromDate||"");
-        }
-      })(d.Victim);
-    }
+      if (Number(countC) === 0) {
+        logger.info("[DB] Seeding CaseSummaryFlat...");
+        const inserts = d.CaseMaster.map(c => {
+          const unit = unitMap[c.PoliceStationID]||{};
+          const dist = distMap[unit.DistrictID]||{};
+          const emp = empMap[c.PolicePersonID]||{};
+          const rank = rankMap[emp.RankID]||{};
+          const court = crtMap[c.CourtID]||{};
+          return {
+            CaseMasterID: c.CaseMasterID, CrimeNo: c.CrimeNo, CaseNo: c.CaseNo,
+            CrimeRegisteredDate: c.CrimeRegisteredDate, IncidentFromDate: c.IncidentFromDate,
+            IncidentToDate: c.IncidentToDate, Latitude: c.latitude, Longitude: c.longitude,
+            BriefFacts: c.BriefFacts || "", CaseCategoryName: catMap[c.CaseCategoryID] || "FIR",
+            GravityOffence: gravMap[c.GravityOffenceID] || "", CrimeMajorHead: chMap[c.CrimeMajorHeadID] || "",
+            CrimeMinorHead: cshMap[c.CrimeMinorHeadID] || "", CaseStatus: stMap[c.CaseStatusID] || "",
+            PoliceStationName: unit.UnitName || "", DistrictName: dist.DistrictName || "",
+            StateName: "Karnataka", RegisteringOfficerName: emp.FirstName || "",
+            RegisteringOfficerRank: rank.RankName || "", CourtName: court.CourtName || "",
+            EmbeddingVec: null
+          };
+        });
+        await knex.batchInsert('CaseSummaryFlat', inserts, 500);
+      }
 
-    if (countCP === 0) {
-      console.log("[DB] Seeding ComplainantSummaryFlat...");
-      const insCP = sqliteDb.prepare(`INSERT INTO ComplainantSummaryFlat VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`);
-      sqliteDb.transaction(rows => {
-        for (const cp of rows) {
-          const c=caseIdx[cp.CaseMasterID]||{}, unit=unitMap[c.PoliceStationID]||{}, dist=distMap[unit.DistrictID]||{};
-          insCP.run(cp.ComplainantID,cp.CaseMasterID,c.CrimeNo||"",
-            cp.ComplainantName,cp.AgeYear,cp.GenderID===1?"Male":"Female",
-            occMap[cp.OccupationID]||"Others",relMap[cp.ReligionID]||"Others",cstMap[cp.CasteID]||"Others",
-            chMap[c.CrimeMajorHeadID]||"",cshMap[c.CrimeMinorHeadID]||"",
-            unit.UnitName||"",dist.DistrictName||"");
-        }
-      })(d.ComplainantDetails);
-    }
+      if (Number(countA) === 0) {
+        logger.info("[DB] Seeding AccusedSummaryFlat...");
+        const offenderCounts = {};
+        for (const a of d.Accused) offenderCounts[a.AccusedName] = (offenderCounts[a.AccusedName]||0)+1;
 
-    console.log("[DB] Flat database loading complete.");
+        const inserts = d.Accused.map(a => {
+          const ar = arMap[a.AccusedMasterID]||{};
+          const aDist = distMap[ar.ArrestSurrenderDistrictId]||{};
+          const io = empMap[ar.IOID]||{};
+          const ioRank = rankMap[io.RankID]||{};
+          const court = crtMap[ar.CourtID]||{};
+          const c = caseIdx[a.CaseMasterID]||{};
+          const unit = unitMap[c.PoliceStationID]||{};
+          const dist = distMap[unit.DistrictID]||{};
+          
+          const edus = ["High School", "Graduate", "Primary", "Illiterate"];
+          const emps = ["Unemployed", "Self-employed", "Private Sector", "Laborer"];
+          const rc = offenderCounts[a.AccusedName]||1;
+          const risk = rc > 3 ? "High" : (rc > 1 ? "Medium" : "Low");
+
+          return {
+            AccusedMasterID: a.AccusedMasterID, CaseMasterID: a.CaseMasterID, CrimeNo: c.CrimeNo || "",
+            AccusedName: a.AccusedName, AgeYear: a.AgeYear, Gender: a.GenderID===1?"Male":a.GenderID===2?"Female":"Transgender",
+            PersonID: a.PersonID, ArrestDate: ar.ArrestSurrenderDate || "", ArrestDistrict: aDist.DistrictName || "",
+            ArrestState: "Karnataka", ArrestingOfficerName: io.FirstName || "", ArrestingOfficerRank: ioRank.RankName || "",
+            ProducedInCourt: court.CourtName || "", CrimeMajorHead: chMap[c.CrimeMajorHeadID] || "",
+            CrimeMinorHead: cshMap[c.CrimeMinorHeadID] || "", PoliceStationName: unit.UnitName || "",
+            DistrictName: dist.DistrictName || "", Education: edus[Math.floor(Math.random()*edus.length)],
+            Employment: emps[Math.floor(Math.random()*emps.length)], RiskScore: risk
+          };
+        });
+        await knex.batchInsert('AccusedSummaryFlat', inserts, 500);
+      }
+
+      if (Number(countV) === 0) {
+        logger.info("[DB] Seeding VictimSummaryFlat...");
+        const inserts = d.Victim.map(v => {
+          const c = caseIdx[v.CaseMasterID]||{};
+          const unit = unitMap[c.PoliceStationID]||{};
+          const dist = distMap[unit.DistrictID]||{};
+          return {
+            VictimMasterID: v.VictimMasterID, CaseMasterID: v.CaseMasterID, CrimeNo: c.CrimeNo || "",
+            VictimName: v.VictimName, AgeYear: v.AgeYear, Gender: v.GenderID===1?"Male":"Female",
+            IsPoliceVictim: v.VictimPolice||0, CrimeMajorHead: chMap[c.CrimeMajorHeadID] || "",
+            CrimeMinorHead: cshMap[c.CrimeMinorHeadID] || "", PoliceStationName: unit.UnitName || "",
+            DistrictName: dist.DistrictName || "", IncidentFromDate: c.IncidentFromDate || ""
+          };
+        });
+        await knex.batchInsert('VictimSummaryFlat', inserts, 500);
+      }
+
+      if (Number(countCP) === 0) {
+        logger.info("[DB] Seeding ComplainantSummaryFlat...");
+        const inserts = d.ComplainantDetails.map(cp => {
+          const c = caseIdx[cp.CaseMasterID]||{};
+          const unit = unitMap[c.PoliceStationID]||{};
+          const dist = distMap[unit.DistrictID]||{};
+          return {
+            ComplainantID: cp.ComplainantID, CaseMasterID: cp.CaseMasterID, CrimeNo: c.CrimeNo || "",
+            ComplainantName: cp.ComplainantName, AgeYear: cp.AgeYear, Gender: cp.GenderID===1?"Male":"Female",
+            Occupation: occMap[cp.OccupationID]||"Others", Religion: relMap[cp.ReligionID]||"Others", Caste: cstMap[cp.CasteID]||"Others",
+            CrimeMajorHead: chMap[c.CrimeMajorHeadID] || "", CrimeMinorHead: cshMap[c.CrimeMinorHeadID] || "",
+            PoliceStationName: unit.UnitName || "", DistrictName: dist.DistrictName || ""
+          };
+        });
+        await knex.batchInsert('ComplainantSummaryFlat', inserts, 500);
+      }
+
+      const { count: countF } = await knex('FinancialTransactionsFlat').count('* as count').first();
+      if (Number(countF) === 0) {
+        logger.info("[DB] Seeding synthetic FinancialTransactionsFlat...");
+        let inserts = [];
+        let i = 0;
+        for (const a of d.Accused) {
+          if (i++ > 150) break;
+          const c = caseIdx[a.CaseMasterID] || {};
+          const unit = unitMap[c.PoliceStationID] || {};
+          const dist = distMap[unit.DistrictID] || {};
+          const isSuspicious = a.AgeYear > 25 && a.AgeYear < 45 ? 1 : 0;
+          const amt = Math.floor(Math.random() * 500000) + 10000;
+          inserts.push({
+            AccusedMasterID: a.AccusedMasterID, CaseMasterID: a.CaseMasterID, CrimeNo: c.CrimeNo || "",
+            SenderAccount: 'ACC-' + Math.floor(Math.random() * 9999999), ReceiverAccount: 'ACC-' + Math.floor(Math.random() * 9999999),
+            Amount: amt, TransactionDate: c.IncidentFromDate || "2024-01-01", SuspiciousFlag: isSuspicious,
+            Remarks: isSuspicious ? "Flagged: High Value / Money Trail" : "Regular Transaction",
+            PoliceStationName: unit.UnitName || "", DistrictName: dist.DistrictName || ""
+          });
+        }
+        await knex.batchInsert('FinancialTransactionsFlat', inserts, 500);
+      }
+
+      logger.info("[DB] Flat database loading complete.");
+    } catch (e) {
+      logger.error(`[DB] Seeding failed. Check seeds/seed-data.json: ${e.message}`);
+    }
   } catch (e) {
-    console.warn("[DB] Seeding failed. Check seeds/seed-data.json:", e.message);
+    logger.error(`[DB] Initialization error: ${e.message}`);
   }
 }
 
-loadSeedData();
+// Initialize on startup
+initializeDB();
 
 // ─── Session sweeper — removes expired tokens every 60 seconds ───────────────
-
 setInterval(async () => {
   try {
     const now = new Date().toISOString();
     const deletedCount = await knex("UserSessions").where("ExpiresAt", "<", now).del();
     if (deletedCount > 0) {
-      console.log(`[AUTH SWEEPER] Cleaned ${deletedCount} expired session(s).`);
+      logger.info(`[AUTH SWEEPER] Cleaned ${deletedCount} expired session(s).`);
     }
   } catch (err) {
-    console.warn("[AUTH SWEEPER ERROR]", err.message);
+    logger.error(`[DB] Session cleanup failed: ${err.message}`);
   }
 }, 60_000);
 

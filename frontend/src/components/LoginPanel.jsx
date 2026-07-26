@@ -8,7 +8,14 @@ const loginSchema = z.object({
   password: z.string().min(1, "Password is required").max(100),
 });
 
-export default function LoginPanel({ onLogin, users }) {
+const DEMO_USERS = {
+  admin:     { role: "scrb_analyst", password: "Ksp@Scrb#2025!Adm" },
+  sp_blr:    { role: "sp", password: "Ksp@Sp#Blr2025!" },
+  insp_wf:   { role: "inspector", password: "Ksp@Insp#Wf2025!" },
+  constable: { role: "constable", password: "Ksp@Const#2025!" }
+};
+
+export default function LoginPanel({ onLogin, onBack, users = DEMO_USERS }) {
   const [serverError, setServerError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -29,47 +36,114 @@ export default function LoginPanel({ onLogin, users }) {
 
   return (
     <div className="login-screen">
-      <div className="login-card">
-        <img src="/ksp_emblem.png" alt="KSP Emblem" className="login-emblem"/>
-        <h1>KSP Crime Intelligence</h1>
-        <p className="login-subtitle">Karnataka State Police | SCRB</p>
-        <p className="login-subtitle2">Intelligent Conversational AI for Crime Database</p>
-        
-        <form onSubmit={handleSubmit(onSubmit)} className="login-form">
-          <label>Officer Username</label>
-          <div className="input-group">
-            <span className="input-icon">👤</span>
-            <input type="text" {...register("username")} placeholder="Enter username" className="login-input" disabled={loading}/>
+      <div className="login-glow-1"></div>
+      <div className="login-glow-2"></div>
+      
+      <div className="login-container">
+        <div className="login-left-panel">
+          <div className="login-bg-overlay" style={{ backgroundImage: "url('/ksp_emblem.png')" }}></div>
+          <div className="login-brand">
+            <div className="login-emblem-container">
+               <img src="/ksp_emblem.png" alt="KSP Emblem" className="login-emblem-large"/>
+            </div>
+            <h2>Karnataka State Police</h2>
+            <div className="login-divider"></div>
+            <p>State Crime Records Bureau</p>
+            <span className="login-badge">Restricted Access Portal</span>
           </div>
-          {errors.username && <p className="login-error" style={{marginTop: "4px", fontSize: "12px"}}>{errors.username.message}</p>}
-          
-          <label style={{ marginTop: "14px", display: "block" }}>Password</label>
-          <div className="input-group">
-            <span className="input-icon">🔒</span>
-            <input type="password" {...register("password")} placeholder="Enter password" className="login-input" disabled={loading}/>
-          </div>
-          {errors.password && <p className="login-error" style={{marginTop: "4px", fontSize: "12px"}}>{errors.password.message}</p>}
-          
-          {serverError && <p className="login-error">{serverError}</p>}
-          <button type="submit" className="login-btn" disabled={loading}>
-            {loading ? "Authenticating..." : "Login"}
-          </button>
-        </form>
-        
-        <div className="demo-accounts">
-          <p className="demo-label">Demonstration Profiles (Click to pre-fill):</p>
-          {Object.entries(users).map(([u,d])=>(
-            <button key={u} className="demo-chip" onClick={()=>{
-              setValue("username", u);
-              setValue("password", u);
-              clearErrors();
-              setServerError("");
-            }} disabled={loading}>
-              👤 {u} <span className="demo-role">({d.role.replace("_", " ").toUpperCase()})</span>
-            </button>
-          ))}
         </div>
-        <p className="login-disclaimer">🔒 Official SCRB Portal. All logins are audited and logged in QueryAuditLog.</p>
+
+        <div className="login-right-panel">
+          <div className="login-header" style={{ position: 'relative' }}>
+            {onBack && (
+              <button 
+                onClick={onBack}
+                type="button"
+                style={{
+                  position: 'absolute',
+                  top: '-20px',
+                  left: 0,
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--text-muted)',
+                  fontSize: '13px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  fontFamily: 'Inter, sans-serif'
+                }}
+              >
+                ← Back to Home
+              </button>
+            )}
+            <h1>Officer Login</h1>
+            <p>Enter your credentials to access the Crime Intelligence system.</p>
+          </div>
+          
+          <form onSubmit={handleSubmit(onSubmit)} className="login-form">
+            <div className="input-group-modern">
+              <input 
+                type="text" 
+                {...register("username")} 
+                placeholder=" " 
+                className="login-input-modern" 
+                disabled={loading}
+              />
+              <label>Officer Username</label>
+              <span className="input-icon-modern">👤</span>
+            </div>
+            {errors.username && <p className="login-error-modern">{errors.username.message}</p>}
+            
+            <div className="input-group-modern" style={{ marginTop: "24px" }}>
+              <input 
+                type="password" 
+                {...register("password")} 
+                placeholder=" " 
+                className="login-input-modern" 
+                disabled={loading}
+              />
+              <label>Password</label>
+              <span className="input-icon-modern">🔒</span>
+            </div>
+            {errors.password && <p className="login-error-modern">{errors.password.message}</p>}
+            
+            {serverError && (
+              <div className="login-server-error">
+                <span>⚠️</span> {serverError}
+              </div>
+            )}
+            
+            <button type="submit" className={`login-btn-modern ${loading ? 'loading' : ''}`} disabled={loading}>
+              <span className="btn-text">{loading ? "Authenticating..." : "Secure Login"}</span>
+              <span className="btn-icon">➔</span>
+            </button>
+          </form>
+          
+          <div className="demo-accounts-modern">
+            <p className="demo-label-modern">Quick Access (Demo):</p>
+            <div className="demo-chips-grid">
+              {Object.entries(users).map(([u,d])=>(
+                <button key={u} type="button" className="demo-chip-modern" onClick={()=>{
+                  setValue("username", u);
+                  setValue("password", d.password);
+                  clearErrors();
+                  setServerError("");
+                }} disabled={loading}>
+                  <span className="demo-avatar">{u.charAt(0).toUpperCase()}</span>
+                  <div className="demo-info">
+                    <span className="demo-name">{u}</span>
+                    <span className="demo-role-modern">{d.role.replace("_", " ")}</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+          
+          <p className="login-disclaimer-modern">
+            🔒 Official SCRB Portal. Unauthorized access is prohibited. All actions are audited.
+          </p>
+        </div>
       </div>
     </div>
   );

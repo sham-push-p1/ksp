@@ -7,6 +7,26 @@ import { useApp } from "../context/AppContext";
 import "leaflet/dist/leaflet.css";
 import { api } from "../utils/api";
 
+function HeatmapLayer({ points }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!points || points.length === 0) return;
+    const heatPts = points
+      .map(p => [parseFloat(p.Latitude), parseFloat(p.Longitude), 1])
+      .filter(p => !isNaN(p[0]) && !isNaN(p[1]));
+    
+    const heatLayer = L.heatLayer(heatPts, {
+      radius: 20,
+      blur: 15,
+      maxZoom: 10,
+      gradient: { 0.2: '#0000ff', 0.4: '#00ffff', 0.6: '#00ff00', 0.8: '#ffff00', 1.0: '#ff0000' }
+    }).addTo(map);
+
+    return () => { map.removeLayer(heatLayer); };
+  }, [map, points]);
+  return null;
+}
+
 // Karnataka bounding box center
 const KA_CENTER = [14.5204, 75.7224];
 
@@ -56,6 +76,7 @@ export default function CrimeMap() {
   const [error, setError]     = useState(null);
   const [filter, setFilter]   = useState("ALL");
   const [stats, setStats]     = useState({});
+  const [viewMode, setViewMode] = useState("cluster"); // "cluster" | "heatmap"
 
   useEffect(() => {
     setLoading(true);
@@ -84,6 +105,15 @@ export default function CrimeMap() {
       });
 
   const topCrimes = Object.entries(stats)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5);
+
+  const districtCounts = {};
+  for (const p of filtered) {
+    const d = p.DistrictName || "Unknown";
+    districtCounts[d] = (districtCounts[d] || 0) + 1;
+  }
+  const topDistricts = Object.entries(districtCounts)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5);
 
@@ -120,26 +150,63 @@ export default function CrimeMap() {
           ))}
         </div>
 
-        {/* Crime Category Filter */}
-        <div className="map-filter-bar">
-          {categories.map(cat => (
-            <button
-              key={cat}
-              className={`map-filter-btn ${filter === cat ? "active" : ""}`}
-              style={filter === cat && cat !== "ALL" ? { borderColor: getCrimeColor(cat), background: getCrimeColor(cat) + "22" } : {}}
-              onClick={() => setFilter(cat)}
-            >
-              {cat !== "ALL" && (
-                <span className="chip-dot" style={{ background: getCrimeColor(cat) }} />
-              )}
-              {cat}
+        {/* Crime Category Filter & View Mode */}
+        <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+          <div className="map-filter-bar">
+            {categories.map(cat => (
+              <button
+                key={cat}
+                className={`map-filter-btn ${filter === cat ? "active" : ""}`}
+                style={filter === cat && cat !== "ALL" ? { borderColor: getCrimeColor(cat), background: getCrimeColor(cat) + "22" } : {}}
+                onClick={() => setFilter(cat)}
+              >
+                {cat !== "ALL" && (
+                  <span className="chip-dot" style={{ background: getCrimeColor(cat) }} />
+                )}
+                {cat}
+              </button>
+            ))}
+          </div>
+          
+          <div style={{ display: 'flex', background: 'var(--surface-2)', borderRadius: '8px', padding: '4px', border: '1px solid var(--border)' }}>
+            <button 
+              onClick={() => setViewMode("cluster")}
+              style={{ padding: '6px 12px', border: 'none', background: viewMode === 'cluster' ? 'var(--accent-blue)' : 'transparent', color: viewMode === 'cluster' ? '#fff' : 'var(--text)', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>
+              📍 Clusters
             </button>
-          ))}
+            <button 
+              onClick={() => setViewMode("heatmap")}
+              style={{ padding: '6px 12px', border: 'none', background: viewMode === 'heatmap' ? 'var(--red)' : 'transparent', color: viewMode === 'heatmap' ? '#fff' : 'var(--text)', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>
+              🔥 Heatmap
+            </button>
+          </div>
         </div>
       </div>
 
       {/* Leaflet Map */}
-      <div className="map-container-outer">
+      <div className="map-container-outer" style={{ position: 'relative' }}>
+        
+        {/* Hotspot Analytics Overlay */}
+        <div style={{ position: 'absolute', top: '16px', right: '16px', zIndex: 1000, background: 'var(--surface)', padding: '16px', borderRadius: '12px', boxShadow: 'var(--shadow-lg)', width: '250px', border: '1px solid var(--border)' }}>
+          <h4 style={{ margin: '0 0 12px 0', fontSize: '14px', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span>🚨</span> Hotspot Analytics
+          </h4>
+          <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: '600' }}>
+            Top Districts • {filter}
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {topDistricts.map(([dist, count], idx) => (
+              <div key={dist} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '13px', fontWeight: '500', color: 'var(--text)' }}>{idx + 1}. {dist}</span>
+                <span style={{ background: 'var(--accent-blue-light)', color: 'var(--accent-blue)', padding: '2px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: '700' }}>{count} cases</span>
+              </div>
+            ))}
+            {topDistricts.length === 0 && (
+              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>No data available</span>
+            )}
+          </div>
+        </div>
+
         <MapContainer
           center={KA_CENTER}
           zoom={7}
@@ -152,38 +219,42 @@ export default function CrimeMap() {
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
 
-          <MarkerClusterGroup
-            chunkedLoading
-            showCoverageOnHover={false}
-            maxClusterRadius={50}
-          >
-            {filtered.map((pt, i) => {
-              const lat = parseFloat(pt.Latitude);
-              const lng = parseFloat(pt.Longitude);
-              if (isNaN(lat) || isNaN(lng)) return null;
-              const color = getCrimeColor(pt.CrimeMajorHead);
-              return (
-                <CircleMarker
-                  key={pt.CaseMasterID || i}
-                  center={[lat, lng]}
-                  radius={6}
-                  pathOptions={{ color, fillColor: color, fillOpacity: 0.75, weight: 1.5 }}
-                >
-                  <Popup>
-                    <div className="map-popup">
-                      <div className="popup-crime" style={{ color }}>{pt.CrimeMajorHead || "Unknown Crime"}</div>
-                      <div className="popup-row"><b>Crime No:</b> {pt.CrimeNo}</div>
-                      <div className="popup-row"><b>Station:</b> {pt.PoliceStationName}</div>
-                      <div className="popup-row"><b>District:</b> {pt.DistrictName}</div>
-                      <div className="popup-row"><b>Status:</b> {pt.CaseStatus}</div>
-                      <div className="popup-row"><b>Date:</b> {pt.IncidentFromDate?.substring(0, 10)}</div>
-                      <div className="popup-row"><b>Gravity:</b> {pt.GravityOffence}</div>
-                    </div>
-                  </Popup>
-                </CircleMarker>
-              );
-            })}
-          </MarkerClusterGroup>
+          {viewMode === "cluster" ? (
+            <MarkerClusterGroup
+              chunkedLoading
+              showCoverageOnHover={false}
+              maxClusterRadius={50}
+            >
+              {filtered.map((pt, i) => {
+                const lat = parseFloat(pt.Latitude);
+                const lng = parseFloat(pt.Longitude);
+                if (isNaN(lat) || isNaN(lng)) return null;
+                const color = getCrimeColor(pt.CrimeMajorHead);
+                return (
+                  <CircleMarker
+                    key={pt.CaseMasterID || i}
+                    center={[lat, lng]}
+                    radius={6}
+                    pathOptions={{ color, fillColor: color, fillOpacity: 0.75, weight: 1.5 }}
+                  >
+                    <Popup>
+                      <div className="map-popup">
+                        <div className="popup-crime" style={{ color }}>{pt.CrimeMajorHead || "Unknown Crime"}</div>
+                        <div className="popup-row"><b>Crime No:</b> {pt.CrimeNo}</div>
+                        <div className="popup-row"><b>Station:</b> {pt.PoliceStationName}</div>
+                        <div className="popup-row"><b>District:</b> {pt.DistrictName}</div>
+                        <div className="popup-row"><b>Status:</b> {pt.CaseStatus}</div>
+                        <div className="popup-row"><b>Date:</b> {pt.IncidentFromDate?.substring(0, 10)}</div>
+                        <div className="popup-row"><b>Gravity:</b> {pt.GravityOffence}</div>
+                      </div>
+                    </Popup>
+                  </CircleMarker>
+                );
+              })}
+            </MarkerClusterGroup>
+          ) : (
+            <HeatmapLayer points={filtered} />
+          )}
         </MapContainer>
 
         {/* Legend */}

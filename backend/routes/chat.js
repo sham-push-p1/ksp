@@ -7,7 +7,7 @@ const express  = require("express");
 const db       = require("../db");
 const { authenticateToken } = require("../middleware/auth");
 const { llmCall }    = require("../functions/nl-to-zcql/ollama");
-const { performRAG } = require("../functions/rag");
+const { performRAG, searchKnowledgeBase } = require("../functions/rag");
 const { FLAT_TABLE_SCHEMA, RBAC, INTENTS } = require("../shared/schema");
 const logger = require("../utils/logger");
 const { validateBody, z } = require("../middleware/validate");
@@ -30,14 +30,39 @@ function validateSQL(q) {
  */
 function applyRBAC(sql, ctx, existing = []) {
   const cfg = RBAC[ctx?.role || "constable"] || {};
-  const hasWhere = /\bWHERE\b/i.test(sql);
+  if (!cfg.stationScoped && !cfg.districtScoped) return { sql, params: existing };
+
+  // Inject condition before GROUP BY, ORDER BY, or LIMIT
+  const splitRegex = /\b(GROUP BY|ORDER BY|LIMIT)\b/i;
+  const match = sql.match(splitRegex);
+  
+  let baseSql = sql;
+  let tailSql = "";
+  if (match) {
+    baseSql = sql.substring(0, match.index);
+    tailSql = sql.substring(match.index);
+  }
+
+  const hasWhere = /\bWHERE\b/i.test(baseSql);
   const conn = hasWhere ? "AND" : "WHERE";
 
-  if (cfg.stationScoped && ctx.stationName)
-    return { sql: `${sql} ${conn} PoliceStationName = ?`, params: [...existing, ctx.stationName] };
-  if (cfg.districtScoped && ctx.districtName)
-    return { sql: `${sql} ${conn} DistrictName = ?`, params: [...existing, ctx.districtName] };
-  return { sql, params: existing };
+  let condition = "";
+  let params = [...existing];
+
+  if (cfg.stationScoped && ctx.stationName) {
+    condition = `PoliceStationName = ?`;
+    params.push(ctx.stationName);
+  } else if (cfg.districtScoped && ctx.districtName) {
+    condition = `DistrictName = ?`;
+    params.push(ctx.districtName);
+  }
+
+  if (!condition) return { sql, params };
+
+  return { 
+    sql: `${baseSql.trim()} ${conn} ${condition} ${tailSql}`.trim(), 
+    params 
+  };
 }
 
 // ─── Intent Classifier ───────────────────────────────────────────────────────
@@ -70,7 +95,7 @@ function buildSQLPrompt(dateRange) {
     dateRule = `\n8. STRICT DATE CONSTRAINT: All queries must implicitly filter for records between '${dateRange.start}' and '${dateRange.end}' using the IncidentFromDate column, unless the user explicitly asks for a different time period.`;
   }
 
-  return `You are a SQLite query generator for Karnataka Police crime database.
+  return `You are a PostgreSQL query generator for Karnataka Police crime database.
 
 TABLES:
 ${schema}
@@ -111,7 +136,10 @@ Q: Accused with multiple cases
 A: SELECT AccusedName, COUNT(*) AS CaseCount, MIN(CrimeMajorHead) AS PrimaryType FROM AccusedSummaryFlat GROUP BY AccusedName HAVING CaseCount > 1 ORDER BY CaseCount DESC LIMIT 50
 
 Q: Crime trend by month in 2024
-A: SELECT substr(CrimeRegisteredDate,1,7) AS Month, COUNT(*) AS Cases FROM CaseSummaryFlat WHERE CrimeRegisteredDate >= '2024-01-01' GROUP BY Month ORDER BY Month`;
+A: SELECT TO_CHAR(CAST(CrimeRegisteredDate AS DATE), 'YYYY-MM') AS Month, COUNT(*) AS Cases FROM CaseSummaryFlat WHERE CrimeRegisteredDate >= '2024-01-01' GROUP BY Month ORDER BY Month
+
+Q: Show suspicious financial transactions for accused
+A: SELECT f.*, a.AccusedName FROM FinancialTransactionsFlat f JOIN AccusedSummaryFlat a ON f.AccusedMasterID = a.AccusedMasterID WHERE f.SuspiciousFlag = 1 LIMIT 50`;
 }
 
 // ─── POST /api/chat ───────────────────────────────────────────────────────────
@@ -136,16 +164,32 @@ router.post("/chat", authenticateToken, validateBody(chatSchema), async (req, re
 
   try {
     const intent = await classifyIntent(question);
-    logger.info(`[ROUTER] ${intent} | ${question.substring(0,70)}`, { userId: userContext.userId });
+    logger.info(`[ROUTER] ${intent} | ${question.substring(0,70)}`, { userId: userContext?.userId });
 
     let response = { intent };
 
     if (intent === INTENTS.GENERAL) {
       const langHint = lang==="kn" ? "Respond in Kannada language." : "Respond in English.";
-      const answer = await llmCall("fast",
-        `You are a Karnataka Police crime analyst assistant. ${langHint} Respond politely, concisely, and helpfully to this greeting, thank you, or conversational query. Keep your response within 1-2 sentences. Tell the user you are here to assist them with Karnataka State Police crime statistics, cases, and repeat offender analytics.`,
-        question, { temperature: 0.7 });
-      response = { ...response, answer, resultCount: 0 };
+      
+      const kbDocs = await searchKnowledgeBase(db, question, 3);
+      
+      let answer;
+      if (kbDocs.length > 0 && kbDocs[0].relevanceScore > 0.60) {
+        const kbContext = kbDocs.map(d => `Title: ${d.Title}\nContent: ${d.Content}`).join("\n\n");
+        answer = await llmCall("smart",
+          `You are a Karnataka Police intelligent assistant. ${langHint} Answer the user's question based strictly on the provided Knowledge Base documents below. If the answer is not in the documents, state that you don't know.\n\nKnowledge Base:\n${kbContext}`,
+          question, { temperature: 0.3, conversationHistory });
+        
+        response = {
+          ...response, answer, resultCount: kbDocs.length,
+          sources: kbDocs.map(d => ({ Title: d.Title, relevanceScore: (d.relevanceScore * 100).toFixed(1) + "%" }))
+        };
+      } else {
+        answer = await llmCall("fast",
+          `You are a Karnataka Police crime analyst assistant. ${langHint} Respond politely, concisely, and helpfully to this greeting, thank you, or conversational query. Keep your response within 1-2 sentences. Tell the user you are here to assist them with Karnataka State Police crime statistics, cases, and repeat offender analytics.`,
+          question, { temperature: 0.7, conversationHistory });
+        response = { ...response, answer, resultCount: 0 };
+      }
 
     } else if (intent === INTENTS.TREND_ANALYSIS) {
       const breakdown = await db.raw(`
@@ -162,7 +206,7 @@ router.post("/chat", authenticateToken, validateBody(chatSchema), async (req, re
       const answer = await llmCall("smart",
         "You are a Karnataka Police crime analyst. Summarize these crime statistics in 2-3 clear sentences. Mention top crime type and total counts.",
         `Question: ${question}\nData sample: ${JSON.stringify(breakdown.slice(0,10))}`,
-        { temperature: 0.3 });
+        { temperature: 0.3, conversationHistory });
       response = { ...response, answer, crimeBreakdown:breakdown, monthlyData:monthly, resultCount:breakdown.length };
 
     } else if (intent === INTENTS.NARRATIVE_SEARCH) {
@@ -178,7 +222,7 @@ Question: "${question}"
 Narratives:
 ${matchesText}`;
 
-      const answer = await llmCall("smart", prompt, question, { temperature: 0.3 });
+      const answer = await llmCall("smart", prompt, question, { temperature: 0.3, conversationHistory });
       response = {
         ...response, answer,
         resultCount: topMatches.length,
@@ -187,14 +231,14 @@ ${matchesText}`;
       };
 
     } else if (intent === INTENTS.HYBRID) {
-      let rawSql = await llmCall("fast", buildSQLPrompt(dateRange), question, { temperature: 0.1 });
+      let rawSql = await llmCall("fast", buildSQLPrompt(dateRange), question, { temperature: 0.1, conversationHistory });
       rawSql = rawSql.replace(/```[a-z]*/gi,"").replace(/```/g,"").trim();
       let sqlResults = [], executedSql = "";
       if (validateSQL(rawSql).safe) {
         const scoped = applyRBAC(rawSql, userContext);
         executedSql = scoped.sql;
         try { sqlResults = await db.raw(scoped.sql, scoped.params); }
-        catch (e) { logger.warn("[HYBRID] SQL failed:", e.message, { userId: userContext.userId }); }
+        catch (e) { logger.warn("[HYBRID] SQL failed: " + e.message, { userId: userContext.userId }); }
       }
 
       const topMatches = await performRAG(db, question, userContext, applyRBAC);
@@ -213,7 +257,7 @@ ${structuredText}
 
 Narrative / Text Context (RAG):
 ${matchesText}`,
-        question, { temperature: 0.3 });
+        question, { temperature: 0.3, conversationHistory });
 
       response = {
         ...response, answer, zcqlQuery: executedSql,
@@ -239,7 +283,7 @@ Instructions:
           whereClause = `WHERE ${ext}`;
           filterDetails = ` filtered by: ${ext}`;
         }
-      } catch (err) { logger.warn("[NETWORK] Filter extraction failed:", err.message, { userId: userContext.userId }); }
+      } catch (err) { logger.warn("[NETWORK] Filter extraction failed: " + err.message, { userId: userContext.userId }); }
 
       const networkSql = `
         SELECT AccusedName, COUNT(*) AS CaseCount,
@@ -265,10 +309,7 @@ Instructions:
 
     } else {
       // structured_query (default)
-      const hist = conversationHistory.slice(-4)
-        .map(h => `Q: ${h.question}\nA: ${(h.answer||"").substring(0,80)}`).join("\n");
-      const userPrompt = hist ? `Context:\n${hist}\n\nNew question: ${question}` : question;
-      let sql = await llmCall("fast", buildSQLPrompt(dateRange), userPrompt, { temperature:0.1 });
+      let sql = await llmCall("fast", buildSQLPrompt(dateRange), question, { temperature:0.1, conversationHistory });
       sql = sql.replace(/```[a-z]*/gi,"").replace(/```/g,"").trim();
 
       const v = validateSQL(sql);
@@ -279,9 +320,9 @@ Instructions:
       try {
         results = await db.raw(scoped.sql, scoped.params);
       } catch(e) {
-        const fix = await llmCall("fast", buildSQLPrompt(),
+        const fix = await llmCall("fast", buildSQLPrompt(dateRange),
           `This SQL failed with error: "${e.message}"\nFailed SQL: ${scoped.sql}\nFix it. Output only corrected SQL.`,
-          { temperature:0.1 });
+          { temperature:0.1, conversationHistory });
         const fixClean = fix.replace(/```[a-z]*/gi,"").replace(/```/g,"").trim();
         if (validateSQL(fixClean).safe) {
           const scopedFix = applyRBAC(fixClean, userContext);
@@ -295,9 +336,9 @@ Instructions:
       const isAgg = scoped.sql.toUpperCase().includes("GROUP BY");
       const langHint = lang==="kn" ? "Respond in Kannada language." : "Respond in English.";
       const answer = await llmCall("smart",
-        `You are a Karnataka Police crime analyst. ${langHint} Summarize the query results concisely. Always mention specific numbers. End your response with: Source: [table queried] | Records found: ${results.length}`,
+        `You are a Karnataka Police crime analyst. ${langHint} Explain the query results to the user in a natural, conversational, and helpful manner like an AI assistant. Break down the findings clearly without sounding like a robotic data readout. Always mention specific numbers.`,
         `Question: "${question}"\nSQL executed: ${scoped.sql}\nResults (${results.length} records): ${JSON.stringify(results.slice(0,15))}`,
-        { temperature:0.3 });
+        { temperature:0.4, conversationHistory });
 
       response = { ...response, answer, zcqlQuery:scoped.sql,
         resultCount:results.length, results:results.slice(0,50),
@@ -320,7 +361,7 @@ Instructions:
 
     res.json(response);
   } catch(err) {
-    logger.error("[CHAT ERROR]", err.message, { userId: userContext?.userId });
+    logger.error("[CHAT ERROR] " + err.message, { userId: userContext?.userId });
     res.status(500).json({ error: "Failed to process query. Check AI node connection." });
   }
 });

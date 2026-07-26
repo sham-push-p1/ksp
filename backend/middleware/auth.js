@@ -13,7 +13,7 @@ const db = require("../db");
  * Express middleware: authenticate request via session cookie or Bearer token.
  * Sets req.user on success; returns 401/500 on failure.
  */
-function authenticateToken(req, res, next) {
+async function authenticateToken(req, res, next) {
   // Primary: HttpOnly cookie (browser clients)
   // Fallback: Authorization: Bearer <token> (API / curl clients)
   const cookieToken = req.cookies?.ksp_session;
@@ -26,14 +26,16 @@ function authenticateToken(req, res, next) {
   }
 
   try {
-    const session = db.prepare("SELECT * FROM UserSessions WHERE Token = ?").get(token);
+    const sessionRes = await db.raw("SELECT * FROM UserSessions WHERE Token = ?", [token]);
+    const session = sessionRes.length > 0 ? sessionRes[0] : null;
+
     if (!session) {
       return res.status(401).json({ error: "Invalid or expired session. Please log in again." });
     }
 
     const now = new Date().toISOString();
     if (session.ExpiresAt && session.ExpiresAt < now) {
-      try { db.prepare("DELETE FROM UserSessions WHERE Token = ?").run(token); } catch {}
+      try { await db.raw("DELETE FROM UserSessions WHERE Token = ?", [token]); } catch {}
       // Clear stale cookie if it was a cookie request
       if (cookieToken) res.clearCookie("ksp_session");
       return res.status(401).json({ error: "Your session has expired. Please log in again." });

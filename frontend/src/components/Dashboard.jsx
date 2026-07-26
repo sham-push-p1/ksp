@@ -139,6 +139,30 @@ export default function Dashboard() {
           <canvas ref={topCrimesChartRef} />
         </div>
       </div>
+
+      {data.anomalyAlerts && data.anomalyAlerts.length > 0 && (
+        <div style={{ marginTop: '24px', padding: '20px', background: 'var(--card-bg)', borderRadius: '12px', border: '1px solid var(--border)' }}>
+          <h4 style={{ margin: '0 0 16px 0', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text)' }}>
+            <span>⚠️</span> AI Predictive Early Warnings
+          </h4>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {data.anomalyAlerts.map(alert => (
+              <div key={alert.id} style={{ 
+                padding: '12px 16px', 
+                borderRadius: '8px', 
+                background: alert.severity === 'high' ? 'rgba(230,57,70,0.1)' : 'rgba(244,162,97,0.1)',
+                borderLeft: `4px solid ${alert.severity === 'high' ? '#e63946' : '#f4a261'}`,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '4px'
+              }}>
+                <strong style={{ color: alert.severity === 'high' ? '#e63946' : '#f4a261', fontSize: '13px', textTransform: 'uppercase' }}>{alert.type}</strong>
+                <span style={{ fontSize: '14px', color: 'var(--text)' }}>{alert.message}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

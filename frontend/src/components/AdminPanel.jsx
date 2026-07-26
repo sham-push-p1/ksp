@@ -20,7 +20,12 @@ export default function AdminPanel() {
   const { user } = useApp();
   const toast = useToast();
   const [users, setUsers] = useState([]);
+  const [auditLogs, setAuditLogs] = useState([]);
+  const [knowledgeDocs, setKnowledgeDocs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [kbTitle, setKbTitle] = useState("");
+  const [kbContent, setKbContent] = useState("");
+  const [addingKb, setAddingKb] = useState(false);
 
   const { register, handleSubmit, formState: { errors }, reset } = useForm({
     resolver: zodResolver(userSchema),
@@ -29,6 +34,8 @@ export default function AdminPanel() {
 
   useEffect(() => {
     fetchUsers();
+    fetchAuditLogs();
+    fetchKnowledgeDocs();
   }, []);
 
   const fetchUsers = async () => {
@@ -39,6 +46,41 @@ export default function AdminPanel() {
       toast.error("Failed to load users", err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchAuditLogs = async () => {
+    try {
+      const logs = await api.getAuditLog();
+      setAuditLogs(logs);
+    } catch (err) {
+      toast.error("Failed to load audit logs", err.message);
+    }
+  };
+
+  const fetchKnowledgeDocs = async () => {
+    try {
+      const res = await api.getKnowledgeBase();
+      setKnowledgeDocs(res.docs || []);
+    } catch (err) {
+      toast.error("Failed to load knowledge base", err.message);
+    }
+  };
+
+  const handleAddKnowledge = async (e) => {
+    e.preventDefault();
+    if (!kbTitle || !kbContent) return toast.error("Missing fields", "Title and content are required.");
+    setAddingKb(true);
+    try {
+      await api.addKnowledgeBase({ title: kbTitle, content: kbContent });
+      toast.success("Knowledge Added", `Successfully indexed: ${kbTitle}`);
+      setKbTitle("");
+      setKbContent("");
+      fetchKnowledgeDocs();
+    } catch (err) {
+      toast.error("Failed to add knowledge", err.message);
+    } finally {
+      setAddingKb(false);
     }
   };
 
@@ -150,6 +192,81 @@ export default function AdminPanel() {
             </table>
           )}
         </div>
+
+        {/* System Audit Logs */}
+        <div className={`${styles.card} ${styles.tableContainer}`} style={{ gridColumn: '1 / -1', marginTop: '24px' }}>
+          <h4 className={styles.cardTitle}>System Audit Logs (ZCQL & Interactions)</h4>
+          {auditLogs.length === 0 ? <p>Loading logs...</p> : (
+            <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+              <table className="results-table">
+                <thead>
+                  <tr>
+                    <th>Timestamp</th>
+                    <th>User</th>
+                    <th>Action / Intent</th>
+                    <th>Query Details</th>
+                    <th>Performance</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {auditLogs.map(log => (
+                    <tr key={log.ID}>
+                      <td style={{ whiteSpace: 'nowrap', fontSize: '11px', color: 'var(--text-muted)' }}>{log.Timestamp}</td>
+                      <td style={{ fontWeight: "bold" }}>{log.UserID}</td>
+                      <td><span className="status-badge" style={{ background: 'var(--surface-2)', color: 'var(--text)' }}>{log.Action}</span></td>
+                      <td style={{ maxWidth: '400px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <div title={log.QueryDetails} style={{ cursor: 'help' }}>{log.QueryDetails}</div>
+                      </td>
+                      <td style={{ fontSize: '12px', color: 'var(--teal)', fontWeight: '600' }}>{log.ExecutionTimeMs}ms</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+        {/* Knowledge Base Ingestion */}
+        <div className={styles.card} style={{ gridColumn: '1 / -1', marginTop: '24px', display: 'flex', gap: '24px' }}>
+          <div style={{ flex: 1 }}>
+            <h4 className={styles.cardTitle}>🧠 RAG Knowledge Base Ingestion</h4>
+            <p className={styles.subtitle} style={{ marginBottom: '16px' }}>Upload Standard Operating Procedures, Penal Codes, or Policy Manuals to augment the AI's intelligence.</p>
+            <form onSubmit={handleAddKnowledge} className={styles.form}>
+              <input 
+                placeholder="Document Title (e.g., 'Cyber Crime SOP 2026')" 
+                value={kbTitle} onChange={e => setKbTitle(e.target.value)} 
+                className={styles.input} 
+                disabled={addingKb}
+              />
+              <textarea 
+                placeholder="Paste the full text content here. The system will automatically generate semantic embeddings for vector search." 
+                value={kbContent} onChange={e => setKbContent(e.target.value)} 
+                className={styles.input} 
+                style={{ height: '120px', resize: 'vertical' }}
+                disabled={addingKb}
+              />
+              <button type="submit" className={styles.submitBtn} disabled={addingKb}>
+                {addingKb ? "Generating Embeddings..." : "Add to Knowledge Base"}
+              </button>
+            </form>
+          </div>
+          
+          <div style={{ flex: 1, borderLeft: '1px solid var(--border)', paddingLeft: '24px' }}>
+            <h4 className={styles.cardTitle}>Indexed Documents</h4>
+            <div style={{ maxHeight: '250px', overflowY: 'auto' }}>
+              {knowledgeDocs.length === 0 ? <p className={styles.subtitle}>No custom documents indexed yet.</p> : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {knowledgeDocs.map(doc => (
+                    <div key={doc.ID} style={{ padding: '12px', background: 'var(--surface-2)', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                      <div style={{ fontWeight: '600', color: 'var(--text)', fontSize: '14px', marginBottom: '4px' }}>{doc.Title}</div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Indexed: {new Date(doc.CreatedAt).toLocaleString()}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
       </div>
     </div>
   );

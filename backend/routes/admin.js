@@ -4,12 +4,14 @@ const db = require("../db");
 const { authenticateToken } = require("../middleware/auth");
 const { validateBody, z } = require("../middleware/validate");
 const logger = require("../utils/logger");
+const { getEmbedding } = require("../functions/nl-to-zcql/ollama");
 
 const router = express.Router();
 
 // Middleware to ensure user is an ADMIN
 const requireAdmin = (req, res, next) => {
-  if (req.user?.role !== "ADMIN") {
+  const role = req.user?.role?.toUpperCase();
+  if (role !== "ADMIN" && role !== "SCRB_ANALYST") {
     logger.warn(`[ADMIN] Unauthorized access attempt by ${req.user?.username}`, { userId: req.user?.userId });
     return res.status(403).json({ error: "Access denied. Admin privileges required." });
   }
@@ -29,8 +31,8 @@ const userSchema = z.object({
 router.get("/users", authenticateToken, requireAdmin, async (req, res) => {
   try {
     const users = await db("SystemUsers")
-      .select("UserID", "Username", "Role", "Name", "DistrictName", "StationName", "CreatedAt")
-      .orderBy("CreatedAt", "desc");
+      .select("UserID", "Username", "Role", "Name", "DistrictName", "StationName")
+      .orderBy("Username", "asc");
     res.json({ users });
   } catch (err) {
     logger.error("[ADMIN ERROR]", err.message, { userId: req.user?.userId });
@@ -84,6 +86,68 @@ router.delete("/users/:id", authenticateToken, requireAdmin, async (req, res) =>
   } catch (err) {
     logger.error("[ADMIN ERROR]", err.message, { userId: req.user?.userId });
     res.status(500).json({ error: "Failed to delete user" });
+  }
+});
+
+// ==========================================
+// KNOWLEDGE BASE MANAGEMENT
+// ==========================================
+
+const knowledgeSchema = z.object({
+  title: z.string().min(3).max(200),
+  content: z.string().min(10)
+});
+
+// GET /api/admin/knowledge
+router.get("/knowledge", authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const docs = await db("KnowledgeBase")
+      .select("ID", "Title", "CreatedAt")
+      .orderBy("CreatedAt", "desc");
+    res.json({ docs });
+  } catch (err) {
+    logger.error("[ADMIN ERROR] Failed to fetch knowledge docs", err.message);
+    res.status(500).json({ error: "Failed to fetch knowledge docs" });
+  }
+});
+
+// POST /api/admin/knowledge
+router.post("/knowledge", authenticateToken, requireAdmin, validateBody(knowledgeSchema), async (req, res) => {
+  const { title, content } = req.body;
+  try {
+    // Generate embedding for the new knowledge document
+    const emb = await getEmbedding(title + "\n" + content);
+    if (!emb || emb.length === 0) {
+      return res.status(500).json({ error: "Failed to generate embeddings for document." });
+    }
+
+    const result = await db("KnowledgeBase").insert({
+      Title: title,
+      Content: content,
+      EmbeddingVec: JSON.stringify(emb),
+      CreatedAt: new Date().toISOString()
+    });
+
+    logger.info(`[ADMIN] Added new knowledge document: ${title}`, { userId: req.user.userId });
+    res.status(201).json({ success: true, id: result[0] });
+  } catch (err) {
+    logger.error("[ADMIN ERROR] Failed to add knowledge doc", err.message);
+    res.status(500).json({ error: "Failed to add knowledge doc" });
+  }
+});
+
+// DELETE /api/admin/knowledge/:id
+router.delete("/knowledge/:id", authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const deleted = await db("KnowledgeBase").where({ ID: id }).del();
+    if (!deleted) return res.status(404).json({ error: "Document not found" });
+    
+    logger.info(`[ADMIN] Deleted knowledge document ID: ${id}`, { userId: req.user.userId });
+    res.json({ success: true });
+  } catch (err) {
+    logger.error("[ADMIN ERROR] Failed to delete knowledge doc", err.message);
+    res.status(500).json({ error: "Failed to delete knowledge doc" });
   }
 });
 

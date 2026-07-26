@@ -7,7 +7,9 @@
  * management needed and JavaScript cannot read the cookie (XSS-safe).
  */
 
-const BASE = process.env.REACT_APP_API_URL || "http://localhost:3001";
+const BASE = process.env.REACT_APP_API_URL !== undefined 
+  ? process.env.REACT_APP_API_URL 
+  : "http://localhost:3001";
 
 async function request(method, endpoint, body) {
   const options = {
@@ -44,5 +46,7 @@ export const api = {
   // --- Admin ---
   getUsers:     ()             => get("/api/admin/users"),
   createUser:   (user)         => post("/api/admin/users", user),
-  deleteUser:   (id)           => request("DELETE", `/api/admin/users/${id}`)
+  deleteUser:   (id)           => request("DELETE", `/api/admin/users/${id}`),
+  getKnowledgeBase: ()         => get("/api/admin/knowledge"),
+  addKnowledgeBase: (doc)      => post("/api/admin/knowledge", doc)
 };

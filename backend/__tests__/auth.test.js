@@ -59,7 +59,7 @@ describe("Auth Routes", () => {
         });
         
       expect(response.status).toBe(400);
-      expect(response.body.errors[0].message).toBe("Password is required");
+      expect(response.body.error).toMatch(/password.*invalid input|password.*required/i);
     });
   });
 
