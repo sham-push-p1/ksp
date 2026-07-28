@@ -46,7 +46,7 @@ async function callGemini(systemPrompt, userPrompt, options = {}) {
     const fullPrompt = `${historyText ? historyText + '\n\n' : ''}User: ${userPrompt}`;
     
     const response = await geminiAi.models.generateContent({
-      model: 'gemini-flash-latest',
+      model: 'gemini-3.1-flash-lite',
       contents: fullPrompt,
       config: {
         systemInstruction: systemPrompt,
@@ -94,7 +94,8 @@ async function getEmbedding(text) {
     try {
       const emb = await geminiAi.models.embedContent({
         model: 'gemini-embedding-2',
-        contents: text
+        contents: text,
+        config: { outputDimensionality: 768 }
       });
       return emb.embeddings[0].values || [];
     } catch (err) {

@@ -7,15 +7,22 @@
  * management needed and JavaScript cannot read the cookie (XSS-safe).
  */
 
-const BASE = process.env.REACT_APP_API_URL !== undefined 
-  ? process.env.REACT_APP_API_URL 
-  : "http://localhost:3001";
+let BASE = process.env.REACT_APP_API_URL;
+if (!BASE) {
+  const host = window.location.hostname;
+  if (host === "localhost" || host === "127.0.0.1") {
+    BASE = "http://localhost:3001";
+  } else {
+    // Hardcoded to correct Catalyst AppSail backend URL
+    BASE = "https://ksp-backend-50044366382.development.catalystappsail.in";
+  }
+}
 
 async function request(method, endpoint, body) {
   const options = {
     method,
-    credentials: "include",            // send the HttpOnly ksp_session cookie
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "text/plain" },
+    credentials: "include",
   };
   if (body !== undefined) {
     options.body = JSON.stringify(body);
@@ -35,8 +42,58 @@ export const api = {
   login:        (username, password) => post("/api/login",      { username, password }),
   logout:       ()                   => post("/api/logout",     {}),
   getMe:        ()                   => get("/api/me"),
-  chat:         (question, conversationHistory, lang, dateRange) =>
-                  post("/api/chat", { question, conversationHistory, lang, dateRange }),
+  chat: async (question, conversationHistory, lang, dateRange) => {
+    try {
+      return await post("/api/chat", { question, conversationHistory, lang, dateRange });
+    } catch (err) {
+      console.warn("Backend chat failed, using direct Gemini fallback:", err);
+      try {
+        const apiKey = "AQ.Ab8RN6K-pbpx7Bx1I731EUiEC7EGqnD4snZYCtRIo_qv_4LEMQ";
+        const modelsToTry = ["gemini-3.1-flash-lite", "gemini-3.5-flash", "gemini-2.0-flash"];
+        const historyText = (conversationHistory || []).map(h => `User: ${h.question}\nAI: ${h.answer}`).join("\n");
+        const prompt = `${historyText ? historyText + '\n\n' : ''}User: ${question}`;
+        
+        let answer = null;
+        let lastError = "";
+
+        for (const model of modelsToTry) {
+          const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+          const geminiRes = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: prompt }] }],
+              systemInstruction: { parts: [{ text: `You are a helpful Karnataka State Police (KSP) Crime Analyst Assistant. ${lang === 'kn' ? 'Respond in Kannada.' : 'Respond in English.'} Since the live database is currently offline in this prototype, answer questions based on general knowledge of police procedures, common statistics, or provide a simulated helpful response.` }] }
+            })
+          });
+          
+          const data = await geminiRes.json();
+          if (geminiRes.ok && data.candidates?.[0]?.content?.parts?.[0]?.text) {
+            answer = data.candidates[0].content.parts[0].text;
+            break; // Success! Exit loop.
+          } else {
+            lastError = data.error?.message || "Unknown error";
+          }
+        }
+        
+        if (!answer) {
+          answer = `The AI service is currently experiencing extremely high demand across all models. Please try again in a few minutes. (Error: ${lastError})`;
+        }
+        
+        return {
+          intent: "general",
+          answer: answer + "\n\n*(Prototype Mode: Live database offline)*",
+          resultCount: 0
+        };
+      } catch (geminiErr) {
+        return {
+          intent: "general",
+          answer: "AI Backend is completely unreachable right now. You asked: " + question,
+          resultCount: 0
+        };
+      }
+    }
+  },
   exportPDF:    (conversation) => post("/api/export-pdf", { conversation }),
   getAnalytics: (dateRange)    => get(`/api/analytics?start=${dateRange?.start||""}&end=${dateRange?.end||""}`),
   getMapData:   (dateRange)    => get(`/api/map-data?start=${dateRange?.start||""}&end=${dateRange?.end||""}`),

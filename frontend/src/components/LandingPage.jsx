@@ -476,7 +476,7 @@ export default function LandingPage({ onTryDemo }) {
       {/* Navbar */}
       <nav className="landing-nav">
         <div className="nav-logo">
-          <img src="/ksp_emblem.png" alt="KSP Emblem" style={{ height: '36px', width: 'auto' }} />
+          <img src={process.env.PUBLIC_URL + "/ksp_emblem.png"} alt="KSP Emblem" style={{ height: '36px', width: 'auto' }} />
           KSP Crime Intelligence
         </div>
         <div className="nav-links">

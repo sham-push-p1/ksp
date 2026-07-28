@@ -44,13 +44,13 @@ app.use(helmet({
 
 app.use(cors({
   origin: true,
-  credentials: true,                // allow cookies cross-origin
-  methods: ["GET", "POST", "OPTIONS"],
-  allowedHeaders: ["Content-Type"],
+  credentials: true,
+  methods: ["GET", "POST", "OPTIONS", "PUT", "DELETE"],
+  allowedHeaders: ["Content-Type", "Authorization"],
 }));
 
 app.use(cookieParser());
-app.use(express.json({ limit: "10mb" }));
+app.use(express.json({ limit: "10mb", type: ["application/json", "text/plain"] }));
 
 // ─── Rate Limiting ────────────────────────────────────────────────────────────
 
@@ -98,22 +98,10 @@ app.get("*", (req, res) => {
 if (require.main === module) {
   const PORT = process.env.X_ZOHO_CATALYST_LISTEN_PORT || process.env.PORT || 3001;
 
-  // Attempt to auto-start Ollama in the background
-  const { spawn } = require('child_process');
-  const ollamaProcess = spawn('ollama', ['serve'], { 
-    detached: true, 
-    stdio: 'ignore', 
-    shell: true 
-  });
-  ollamaProcess.on('error', () => { /* ignore */ });
-  ollamaProcess.unref(); // allow the node process to exit independently
-
-  app.listen(PORT, () => logger.info(`
+  app.listen(PORT, '0.0.0.0', () => logger.info(`
 \x1b[36m🚔 KSP Crime Intelligence — Local Dev Server\x1b[0m
-  API:      http://localhost:${PORT}/api/chat
-  Audit:    http://localhost:${PORT}/api/audit-log
-  Ollama:   http://localhost:11434 (Auto-starting...)
-  Frontend: ${FRONTEND_ORIGIN}
+  API:      http://0.0.0.0:${PORT}/api/chat
+  Audit:    http://0.0.0.0:${PORT}/api/audit-log
 `));
 }
 

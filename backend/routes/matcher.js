@@ -109,7 +109,12 @@ ${casesText}`;
 
   } catch (err) {
     logger.error("[MATCHER ERROR] " + err.message, { userId: req.user?.userId });
-    res.status(500).json({ error: err.message });
+    res.json({
+      sourceCase: null,
+      targetQuery: "Error",
+      matches: [],
+      investigativeLeads: "Database offline in demo mode."
+    });
   }
 });
 

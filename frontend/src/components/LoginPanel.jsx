@@ -41,10 +41,10 @@ export default function LoginPanel({ onLogin, onBack, users = DEMO_USERS }) {
       
       <div className="login-container">
         <div className="login-left-panel">
-          <div className="login-bg-overlay" style={{ backgroundImage: "url('/ksp_emblem.png')" }}></div>
+          <div className="login-bg-overlay" style={{ backgroundImage: `url(${process.env.PUBLIC_URL + '/ksp_emblem.png'})` }}></div>
           <div className="login-brand">
             <div className="login-emblem-container">
-               <img src="/ksp_emblem.png" alt="KSP Emblem" className="login-emblem-large"/>
+               <img src={process.env.PUBLIC_URL + "/ksp_emblem.png"} alt="KSP Emblem" className="login-emblem-large"/>
             </div>
             <h2>Karnataka State Police</h2>
             <div className="login-divider"></div>

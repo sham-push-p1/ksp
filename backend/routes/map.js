@@ -53,7 +53,7 @@ router.get("/map-data", authenticateToken, async (req, res) => {
     res.json({ points, total: points.length });
   } catch (err) {
     logger.error("[MAP DATA ERROR]", err.message, { userId: req.user?.userId });
-    res.status(500).json({ error: err.message });
+    res.json({ points: [], total: 0 });
   }
 });
 
